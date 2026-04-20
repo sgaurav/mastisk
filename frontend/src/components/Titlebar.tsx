@@ -10,7 +10,7 @@ const CRUMB: Record<string, readonly string[]> = {
   mobile:  ['System', 'Mobile companion'],
   queue:   ['Today',  'Reading queue'],
   ingest:  ['System', 'Sources & ingest'],
-  lint:    ['System', 'Lint & health'],
+  lint:    ['System', 'Health check'],
 };
 
 interface Props {

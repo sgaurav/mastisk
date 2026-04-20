@@ -205,8 +205,45 @@ def vault_tree(conn: sqlite3.Connection) -> list[dict]:
         {"kind": "page", "id": "graph", "label": "Graph view", "glyph": "✱"},
         {"kind": "page", "id": "agents", "label": "Agents", "glyph": "◯"},
         {"kind": "page", "id": "ingest", "label": "Sources & ingest", "glyph": "↧"},
-        {"kind": "page", "id": "lint", "label": "Lint & health", "glyph": "✓"},
+        {"kind": "page", "id": "lint", "label": "System health", "glyph": "✓"},
     ]
+
+
+def user_info(conn: sqlite3.Connection) -> dict:
+    """Pull a personalized label from identity.md + live counts for the sidebar pill."""
+    import getpass, re
+    from mastisk.paths import self_dir
+
+    # Name: prefer first bullet under `## Role` in identity.md, else OS user, else "You".
+    name = (getpass.getuser() or "you").capitalize()
+    p = self_dir() / "identity.md"
+    if p.exists():
+        text = p.read_text()
+        m = re.search(r"^##\s*Role\s*\n([^\n]*\n){0,8}", text, flags=re.M)
+        if m:
+            for line in m.group(0).splitlines()[1:]:
+                line = line.strip()
+                if not line or line.startswith("#") or line.startswith("("):
+                    continue
+                # "- Sushil — engineer..." → "Sushil"
+                cleaned = re.sub(r"^[-*•\d.\s]+", "", line).strip()
+                cleaned = re.split(r"[—\-–|,]", cleaned, maxsplit=1)[0].strip()
+                cleaned = re.sub(r"\*\*", "", cleaned)
+                if cleaned and len(cleaned) < 40:
+                    name = cleaned
+                    break
+
+    pages   = conn.execute("SELECT COUNT(*) AS n FROM articles").fetchone()["n"]
+    sources = conn.execute("SELECT COUNT(*) AS n FROM sources").fetchone()["n"]
+    feeds   = conn.execute("SELECT COUNT(*) AS n FROM rss_feeds WHERE enabled=1").fetchone()["n"]
+
+    initials = "".join(w[0] for w in name.split()[:2]).upper() or "—"
+
+    return {
+        "name": name,
+        "initials": initials,
+        "stats": {"pages": pages, "sources": sources, "feeds": feeds},
+    }
 
 
 def pinned_list(conn: sqlite3.Connection) -> list[dict]:

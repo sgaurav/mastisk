@@ -65,6 +65,56 @@ export type VaultItem = VaultPage | VaultSection | VaultFolder;
 
 export interface PinnedItem { id: string; label: string; }
 
+export interface UserInfo {
+  name: string;
+  initials: string;
+  stats: { pages: number; sources: number; feeds: number };
+}
+
+export interface Feed {
+  url: string;
+  title: string;
+  last_fetched: string | null;
+  last_etag: string | null;
+  last_modified: string | null;
+  enabled: boolean;
+  added_at: string;
+}
+
+export interface Job {
+  id: number;
+  agent: string;
+  kind: string;
+  status: 'queued' | 'running' | 'done' | 'failed';
+  attempts: number;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  error: string | null;
+}
+
+export interface GraphNode {
+  id: string;
+  title: string;
+  kind: string;
+  color: string;
+  size: number;
+  degree: number;
+}
+
+export interface GraphEdge {
+  from_article: string;
+  to_article: string;
+  weight: number;
+}
+
+export interface GraphData {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  clusters: { kind: string; color: string; count: number }[];
+  stats: { pages: number; connections: number };
+}
+
 export interface FeedTick {
   id?: number;
   t: string;

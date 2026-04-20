@@ -12,7 +12,10 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from mastisk.paths import pwa_dir
-from mastisk.routes import articles, ask, digest_route, feed_route, search, signals_route, sources_route, vault_route
+from mastisk.routes import (
+    articles, ask, digest_route, feed_route, graph_route, search,
+    signals_route, sources_route, stats_route, vault_route,
+)
 
 log = logging.getLogger("mastisk.app")
 
@@ -58,6 +61,8 @@ def create_app() -> FastAPI:
     app.include_router(signals_route.router, prefix="/api")
     app.include_router(sources_route.router, prefix="/api")
     app.include_router(vault_route.router, prefix="/api")
+    app.include_router(graph_route.router, prefix="/api")
+    app.include_router(stats_route.router, prefix="/api")
 
     @app.get("/api/health")
     def health():

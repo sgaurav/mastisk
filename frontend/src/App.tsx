@@ -14,6 +14,9 @@ import { DigestView } from './components/DigestView';
 import { AgentsView } from './components/AgentsView';
 import { GraphView } from './components/GraphView';
 import { AskDrawer } from './components/AskDrawer';
+import { IngestView } from './components/IngestView';
+import { QueueView } from './components/QueueView';
+import { SystemCheckView } from './components/SystemCheckView';
 
 export function App() {
   const [theme, setTheme] = useState<'light' | 'dark'>(
@@ -31,7 +34,7 @@ export function App() {
   const [askCtx, setAskCtx] = useState<{ prompt: string; selection: string | null; article_id?: string } | null>(null);
 
   // Data
-  const [sidebar, setSidebar] = useState<{ vault: VaultItem[]; pinned: PinnedItem[] } | null>(null);
+  const [sidebar, setSidebar] = useState<{ vault: VaultItem[]; pinned: PinnedItem[]; user: import('./types').UserInfo } | null>(null);
   const [article, setArticle] = useState<Article | null>(null);
   const [digest, setDigest] = useState<Digest | null>(null);
   const [feed, setFeed] = useState<FeedTick[]>([]);
@@ -98,8 +101,7 @@ export function App() {
         <Sidebar
           vault={sidebar.vault}
           pinned={sidebar.pinned}
-          userName="Mastisk"
-          userSub={`${sidebar.vault.reduce((n, v) => n + (v.kind === 'folder' ? v.count : 0), 0)} pages`}
+          user={sidebar.user}
           currentView={view}
           currentArticle={currentArticle}
           onNavigate={navigate}
@@ -113,11 +115,17 @@ export function App() {
         {view === 'digest' && !digest && <Loading/>}
         {(view === 'feed' || view === 'agents') && <AgentsView agents={agents} feed={mergedFeed}/>}
         {view === 'graph' && <GraphView onNavigate={navigate}/>}
-        {['queue', 'ingest', 'lint', 'mobile'].includes(view) && (
+        {view === 'ingest' && <IngestView/>}
+        {view === 'queue' && <QueueView/>}
+        {view === 'lint' && <SystemCheckView/>}
+        {view === 'mobile' && (
           <div className="view">
             <div className="view-h">System</div>
-            <h1 className="view-title">Coming soon</h1>
-            <p className="view-sub">This view isn't built out in the prototype yet. Pick a different item in the sidebar.</p>
+            <h1 className="view-title">Mobile companion</h1>
+            <p className="view-sub">
+              Open Mastisk on your phone via the Tailnet URL (run <code>mastisk url</code>)
+              and tap Share → Add to Home Screen. The full reader runs as a PWA.
+            </p>
           </div>
         )}
       </main>

@@ -26,7 +26,11 @@ def get_article(article_id: str):
 @router.get("/sidebar")
 def sidebar():
     with connect() as conn:
-        return {"vault": q.vault_tree(conn), "pinned": q.pinned_list(conn)}
+        return {
+            "vault":  q.vault_tree(conn),
+            "pinned": q.pinned_list(conn),
+            "user":   q.user_info(conn),
+        }
 
 
 @router.post("/articles/{article_id}/pin")

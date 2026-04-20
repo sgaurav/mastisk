@@ -74,6 +74,112 @@ def _run(cmd, cwd: Optional[Path] = None):
 # ═════════════════════════════════ doctor ═════════════════════════════════
 
 @app.command()
+def status(
+    ping: bool = typer.Option(False, "--ping", help="Also ping Claude + Ollama bridges (slower)"),
+):
+    """Full status report: DB contents, agents, identity files, bridges."""
+    import asyncio
+    from mastisk.db.queries import connect, user_info
+
+    _ensure_db()
+    with connect() as conn:
+        u = user_info(conn)
+        counts = {
+            "articles":     conn.execute("SELECT COUNT(*) AS n FROM articles").fetchone()["n"],
+            "sources":      conn.execute("SELECT COUNT(*) AS n FROM sources").fetchone()["n"],
+            "links":        conn.execute("SELECT COUNT(*) AS n FROM links").fetchone()["n"],
+            "feed_entries": conn.execute("SELECT COUNT(*) AS n FROM feed").fetchone()["n"],
+            "signals":      conn.execute("SELECT COUNT(*) AS n FROM signals").fetchone()["n"],
+        }
+        feeds = [dict(r) for r in conn.execute(
+            "SELECT url, title, last_fetched, enabled FROM rss_feeds ORDER BY added_at DESC"
+        )]
+        jobs_by = {
+            r["status"]: r["n"] for r in conn.execute(
+                "SELECT status, COUNT(*) AS n FROM jobs GROUP BY status"
+            )
+        }
+
+    console.print()
+    console.print(f"[bold]{u['name']}[/bold]  —  {u['stats']['pages']} pages · {u['stats']['sources']} sources · {u['stats']['feeds']} feeds")
+    console.print(f"[dim]vault:[/dim] {vault_dir()}  {'[dim](iCloud)[/dim]' if vault_is_icloud() else '[dim](local)[/dim]'}")
+    console.print()
+
+    tbl = Table(title="Content", show_header=True, header_style="bold")
+    tbl.add_column("what"); tbl.add_column("count", justify="right")
+    for k, n in counts.items():
+        tbl.add_row(k, str(n))
+    console.print(tbl)
+
+    if feeds:
+        tbl2 = Table(title="Feeds", show_header=True, header_style="bold")
+        tbl2.add_column("title"); tbl2.add_column("last synced"); tbl2.add_column("enabled")
+        for f in feeds:
+            tbl2.add_row(
+                (f["title"] or f["url"])[:50],
+                str(f["last_fetched"] or "never"),
+                "✓" if f["enabled"] else "✗",
+            )
+        console.print(tbl2)
+    else:
+        console.print("[yellow]no feeds yet[/yellow] — run: mastisk add-feed <url>")
+
+    if jobs_by:
+        tbl3 = Table(title="Jobs", show_header=True, header_style="bold")
+        tbl3.add_column("status"); tbl3.add_column("n", justify="right")
+        for s, n in jobs_by.items():
+            tbl3.add_row(s, str(n))
+        console.print(tbl3)
+
+    # Self files
+    tbl4 = Table(title="Identity files", show_header=True, header_style="bold")
+    tbl4.add_column("file"); tbl4.add_column("status")
+    for name in ("identity", "interests", "dislikes", "style", "learnings"):
+        p = self_dir() / f"{name}.md"
+        if p.exists():
+            size = p.stat().st_size
+            tbl4.add_row(f"{name}.md", f"[green]present[/green] · {size} bytes")
+        else:
+            tbl4.add_row(f"{name}.md", "[red]missing[/red]")
+    console.print(tbl4)
+
+    if ping:
+        console.print()
+        console.print("[dim]pinging bridges (this takes ~15s)…[/dim]")
+        from mastisk.bridges import claude_bridge, ollama_bridge
+
+        async def go():
+            results = {}
+            try:
+                r = await asyncio.wait_for(
+                    claude_bridge.run_claude("Reply with: OK", timeout_s=60), timeout=60
+                )
+                results["claude"] = ("ok", r["text"][:60])
+            except Exception as e:
+                results["claude"] = ("fail", str(e)[:200])
+            try:
+                r = await asyncio.wait_for(ollama_bridge.chat("ping", cheap=True), timeout=30)
+                results["ollama chat"] = ("ok", r[:60])
+            except Exception as e:
+                results["ollama chat"] = ("fail", str(e)[:200])
+            try:
+                v = await asyncio.wait_for(ollama_bridge.embed(["ping"]), timeout=20)
+                dim = len(v[0]) if v and v[0] else 0
+                results["ollama embed"] = ("ok", f"dim={dim}") if dim else ("fail", "empty")
+            except Exception as e:
+                results["ollama embed"] = ("fail", str(e)[:200])
+            return results
+
+        results = asyncio.run(go())
+        tbl5 = Table(title="Bridges", show_header=True, header_style="bold")
+        tbl5.add_column("bridge"); tbl5.add_column("result")
+        for k, (state, detail) in results.items():
+            color = "green" if state == "ok" else "red"
+            tbl5.add_row(k, f"[{color}]{state}[/{color}] · {detail}")
+        console.print(tbl5)
+
+
+@app.command()
 def doctor():
     """Check preconditions: claude, ollama, tailscale, iCloud dir, deps."""
     tbl = Table(show_header=True, header_style="bold")

@@ -26,6 +26,9 @@ log = logging.getLogger("mastisk.scout")
 # Relevance thresholds (tuned conservatively; easy to edit in one place)
 SIM_THRESHOLD = 0.25
 
+USER_AGENT = "Mastisk/0.1 (+https://github.com/sushilk1991/mastisk)"
+HTTP_TIMEOUT = httpx.Timeout(connect=8.0, read=25.0, write=15.0, pool=5.0)
+
 
 class Scout(Agent):
     name = "scout"
@@ -68,9 +71,57 @@ class Scout(Agent):
                 log.exception("scout auto-poll failed")
 
     async def _fetch_feed(self, feed_url: str) -> None:
+        """Fetch a feed with HTTP conditional-GET — we only re-parse if changed."""
         log.info("scout fetching %s", feed_url)
-        # feedparser is sync; offload? For a small RSS fetch it's fine in-line
-        parsed = feedparser.parse(feed_url)
+
+        # Load cached conditional headers
+        with connect() as conn:
+            row = conn.execute(
+                "SELECT last_etag, last_modified FROM rss_feeds WHERE url=?", (feed_url,)
+            ).fetchone()
+        headers = {"User-Agent": USER_AGENT}
+        if row:
+            if row["last_etag"]:
+                headers["If-None-Match"] = row["last_etag"]
+            if row["last_modified"]:
+                headers["If-Modified-Since"] = row["last_modified"]
+
+        try:
+            async with httpx.AsyncClient(timeout=HTTP_TIMEOUT, follow_redirects=True) as client:
+                resp = await client.get(feed_url, headers=headers)
+        except Exception as e:
+            log.warning("scout: network error on %s: %s", feed_url, e)
+            with connect() as conn:
+                conn.execute(
+                    "UPDATE rss_feeds SET last_fetched=CURRENT_TIMESTAMP WHERE url=?",
+                    (feed_url,),
+                )
+            self.emit_feed(verb="failed", obj=feed_url[:80], kind="rss", payload={"error": str(e)[:200]})
+            return
+
+        # Always record that we tried
+        new_etag = resp.headers.get("etag")
+        new_last_mod = resp.headers.get("last-modified")
+        with connect() as conn:
+            conn.execute(
+                """UPDATE rss_feeds
+                     SET last_fetched=CURRENT_TIMESTAMP,
+                         last_etag=COALESCE(?, last_etag),
+                         last_modified=COALESCE(?, last_modified)
+                   WHERE url=?""",
+                (new_etag, new_last_mod, feed_url),
+            )
+
+        if resp.status_code == 304:
+            log.info("scout: %s unchanged (304)", feed_url)
+            self.emit_feed(verb="checked", obj=feed_url[:80], kind="rss", payload={"status": "not_modified"})
+            return
+        if resp.status_code >= 400:
+            log.warning("scout: %s returned %s", feed_url, resp.status_code)
+            self.emit_feed(verb="failed", obj=feed_url[:80], kind="rss", payload={"status": resp.status_code})
+            return
+
+        parsed = feedparser.parse(resp.content)
         if parsed.bozo and not parsed.entries:
             log.warning("scout: malformed feed %s: %s", feed_url, parsed.bozo_exception)
             return
@@ -80,9 +131,6 @@ class Scout(Agent):
         new_count = 0
 
         with connect() as conn:
-            conn.execute(
-                "UPDATE rss_feeds SET last_fetched=CURRENT_TIMESTAMP WHERE url=?", (feed_url,),
-            )
             for entry in parsed.entries[:20]:
                 link = entry.get("link", "")
                 if not link:
@@ -104,16 +152,21 @@ class Scout(Agent):
                     self.emit_feed(verb="filtered", obj=title[:80], kind="rss", payload={"why": "below threshold"})
                     continue
 
-                # Fetch + extract clean text
+                # Fetch + extract clean text (async so slow sites don't block the tick)
+                body = summary
                 try:
-                    body = trafilatura.extract(
-                        trafilatura.fetch_url(link) or "",
-                        include_comments=False,
-                        include_tables=False,
-                    ) or summary
+                    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT, follow_redirects=True) as c:
+                        page = await c.get(link, headers={"User-Agent": USER_AGENT})
+                        if page.status_code < 400:
+                            extracted = trafilatura.extract(
+                                page.text,
+                                include_comments=False,
+                                include_tables=False,
+                            )
+                            if extracted:
+                                body = extracted
                 except Exception as e:
                     log.info("scout extract failed for %s: %s", link, e)
-                    body = summary
 
                 src_id = hashlib.sha256(link.encode()).hexdigest()[:16]
                 raw_path = raw_dir() / f"{src_id}.txt"

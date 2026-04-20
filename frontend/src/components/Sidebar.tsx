@@ -1,11 +1,10 @@
 import { useState } from 'react';
-import type { VaultItem, PinnedItem, View } from '../types';
+import type { VaultItem, PinnedItem, UserInfo, View } from '../types';
 
 interface Props {
   vault: VaultItem[];
   pinned: PinnedItem[];
-  userName: string;
-  userSub: string;
+  user: UserInfo | null;
   currentView: View;
   currentArticle: string;
   onNavigate: (view: View, id?: string) => void;
@@ -13,7 +12,7 @@ interface Props {
 
 const SYS_VIEWS = new Set<View>(['digest', 'queue', 'feed', 'agents', 'graph', 'ingest', 'lint']);
 
-export function Sidebar({ vault, pinned, userName, userSub, currentView, currentArticle, onNavigate }: Props) {
+export function Sidebar({ vault, pinned, user, currentView, currentArticle, onNavigate }: Props) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const toggle = (k: string) => setCollapsed((s) => ({ ...s, [k]: !s[k] }));
 
@@ -50,13 +49,19 @@ export function Sidebar({ vault, pinned, userName, userSub, currentView, current
         }
         return <Row key={item.id} item={item} currentArticle={currentArticle} currentView={currentView} onNavigate={onNavigate} />;
       })}
-      <div className="user-pill">
-        <div className="user-avatar">{userName.slice(0, 2).toUpperCase()}</div>
-        <div className="user-meta">
-          <div className="user-name">{userName}</div>
-          <div className="user-sub">{userSub}</div>
+      {user && (
+        <div className="user-pill" onClick={() => onNavigate('ingest')} role="button" title="Sources & ingest">
+          <div className="user-avatar">{user.initials}</div>
+          <div className="user-meta">
+            <div className="user-name">{user.name}</div>
+            <div className="user-sub">
+              {user.stats.pages} {user.stats.pages === 1 ? 'page' : 'pages'}
+              {user.stats.sources > 0 && ` · ${user.stats.sources} sources`}
+              {user.stats.feeds > 0 && ` · ${user.stats.feeds} feeds`}
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </aside>
   );
 }
