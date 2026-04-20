@@ -729,6 +729,9 @@ a { color: inherit; }
 }
 .agent-status .s-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 1.6s infinite; }
 .agent-status.idle .s-dot { background: var(--fg-faint); animation: none; }
+.agent-status.disabled { color: var(--fg-faint); opacity: 0.7; }
+.agent-status.disabled .s-dot { background: var(--line); animation: none; }
+.agent-card.disabled { opacity: 0.6; background: transparent; border-style: dashed; }
 .agent-load { margin-top: 12px; }
 .agent-load .label {
   display: flex; justify-content: space-between;

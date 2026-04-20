@@ -42,6 +42,20 @@ async def start_scheduler():
     except Exception as e:
         log.info("compiler not scheduled: %s", e)
 
+    try:
+        from mastisk.agents.linter import Linter
+        # Linter runs slightly after Scout/Compiler so it sees fresh articles
+        # on the same boot without racing them.
+        sched.add_job(
+            Linter().run_once, "interval",
+            seconds=Linter.tick_seconds, id="linter",
+            max_instances=1,
+            next_run_time=datetime.now(timezone.utc) + timedelta(seconds=30),
+            coalesce=True,
+        )
+    except Exception as e:
+        log.info("linter not scheduled: %s", e)
+
     sched.start()
     log.info("scheduler started")
     return sched

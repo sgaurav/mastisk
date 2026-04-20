@@ -137,9 +137,12 @@ export interface AgentInfo {
   id: string;
   name: string;
   role: string;
-  status: 'active' | 'idle';
+  status: 'active' | 'idle' | 'disabled';
   load: number;
   color: 'amber' | 'violet' | 'emerald' | 'blue' | 'rose';
+  implemented: boolean;
+  queued: number;
+  running: number;
 }
 
 export interface DigestThread {

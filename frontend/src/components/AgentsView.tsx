@@ -14,16 +14,29 @@ export function AgentsView({ agents, feed }: Props) {
 
       <div className="agent-grid">
         {agents.map((a) => (
-          <div key={a.id} className="agent-card">
+          <div key={a.id} className={`agent-card ${a.implemented ? '' : 'disabled'}`}>
             <div className={`agent-status ${a.status}`}>
-              <span className="s-dot"/>{a.status}
+              <span className="s-dot"/>{a.status === 'disabled' ? 'not wired' : a.status}
             </div>
             <div className="a-name">{a.name}</div>
             <div className="a-role">{a.role}</div>
-            <div className="agent-load">
-              <div className="label"><span>load</span><span>{Math.round(a.load*100)}%</span></div>
-              <div className="bar"><div className="fill" style={{ width: `${a.load*100}%` }}/></div>
-            </div>
+            {a.implemented ? (
+              <>
+                <div className="agent-load">
+                  <div className="label">
+                    <span>queue</span>
+                    <span>{a.queued} queued · {a.running} running</span>
+                  </div>
+                  <div className="bar"><div className="fill" style={{ width: `${Math.min(1, a.load)*100}%` }}/></div>
+                </div>
+              </>
+            ) : (
+              <div className="agent-load">
+                <div className="label" style={{color:'var(--fg-faint)'}}>
+                  <span>status</span><span>no implementation</span>
+                </div>
+              </div>
+            )}
           </div>
         ))}
       </div>
