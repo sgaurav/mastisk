@@ -32,6 +32,22 @@ app = typer.Typer(
 console = Console()
 
 
+def _version_callback(value: bool):
+    if value:
+        console.print(f"mastisk {__version__}")
+        raise typer.Exit()
+
+
+@app.callback()
+def _main(
+    version: bool = typer.Option(
+        False, "--version", "-V", callback=_version_callback, is_eager=True,
+        help="Show version and exit.",
+    ),
+):
+    pass
+
+
 # ═════════════════════════════════ start / dev ═════════════════════════════════
 
 @app.command()

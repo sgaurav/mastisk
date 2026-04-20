@@ -19,6 +19,11 @@ Want the demo wiki (Test-time compute + friends) to see what it looks like popul
 ./install.sh --autostart --demo
 ```
 
+Update to the latest code (git pull + rebuild + reinstall + restart):
+```bash
+./install.sh --update
+```
+
 Uninstall (preserves your iCloud vault):
 ```bash
 ./install.sh --uninstall

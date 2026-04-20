@@ -4,6 +4,7 @@
 #   ./install.sh                install + init (no autostart)
 #   ./install.sh --autostart    install + init + launchd agent
 #   ./install.sh --demo         install + init --demo (loads sample wiki)
+#   ./install.sh --update       git pull, rebuild, reinstall, restart
 #   ./install.sh --uninstall    remove everything except iCloud vault
 set -euo pipefail
 
@@ -14,10 +15,12 @@ cd "$REPO_ROOT"
 AUTOSTART=0
 DEMO=0
 UNINSTALL=0
+UPDATE=0
 for arg in "$@"; do
   case "$arg" in
     --autostart)   AUTOSTART=1 ;;
     --demo)        DEMO=1 ;;
+    --update)      UPDATE=1 ;;
     --uninstall)   UNINSTALL=1 ;;
     -h|--help)
       sed -n '1,/^set -euo/p' "$0" | sed -n '1,/^set -euo/{/^# /p}'
@@ -26,6 +29,27 @@ for arg in "$@"; do
     *) echo "unknown arg: $arg"; exit 1 ;;
   esac
 done
+
+# ─────────────────────────────────────────────────────────── update ──
+if [ "$UPDATE" -eq 1 ]; then
+  echo "== Updating Mastisk =="
+  git pull --ff-only
+  echo "== Rebuilding frontend =="
+  (cd frontend && npm install --silent && npm run build) >/dev/null
+  echo "== Reinstalling Python package =="
+  uv tool install --force --reinstall . >/dev/null
+  echo "✓ binary refreshed at $(command -v mastisk || echo '~/.local/bin/mastisk')"
+  # Restart if launchd agent is loaded
+  if launchctl list 2>/dev/null | grep -q 'com.mastisk.agents'; then
+    echo "== Restarting via launchctl =="
+    launchctl kickstart -k "gui/$(id -u)/com.mastisk.agents"
+    echo "✓ restarted"
+  else
+    echo "  (no autostart agent; if Mastisk was running, restart it: pkill -f 'mastisk start' && mastisk start &)"
+  fi
+  mastisk --version 2>/dev/null || true
+  exit 0
+fi
 
 # ─────────────────────────────────────────────────────────── uninstall ──
 if [ "$UNINSTALL" -eq 1 ]; then
