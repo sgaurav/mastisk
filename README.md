@@ -21,7 +21,10 @@ Want the demo wiki (Test-time compute + friends) to see what it looks like popul
 
 Update to the latest code (git pull + rebuild + reinstall + restart):
 ```bash
-./install.sh --update
+mastisk update            # works from anywhere once installed
+mastisk update --check    # show pending commits without applying
+# or equivalently:
+./install.sh --update     # same thing, script form
 ```
 
 Uninstall (preserves your iCloud vault):
@@ -173,6 +176,10 @@ mastisk logs -n 50    # tail the feed ticker
 
 ```
 mastisk doctor              check preconditions
+mastisk status              full content + agents + bridges report
+mastisk status --ping       same, plus live Claude + Ollama smoke test
+mastisk update              git pull + rebuild + reinstall + restart
+mastisk update --check      show pending commits without applying
 mastisk init                first-time setup (empty DB)
 mastisk init --demo         first-time setup + seed the demo wiki
 mastisk seed-demo           load the demo wiki onto an existing install

@@ -309,6 +309,113 @@ def init(
         console.print("  tip:   mastisk add-feed <url>  [dim]— subscribe a feed to kick off Scout[/dim]")
 
 
+@app.command()
+def update(
+    check: bool = typer.Option(False, "--check", help="Only show whether updates are available, don't apply"),
+    skip_build: bool = typer.Option(False, "--skip-build", help="Skip the npm frontend rebuild"),
+    skip_restart: bool = typer.Option(False, "--skip-restart", help="Don't kickstart the launchd agent after update"),
+):
+    """Pull latest code, rebuild frontend, reinstall package, restart launchd agent if loaded."""
+    source = _load_install_source()
+    if not source:
+        console.print("[red]no install source recorded[/red] — run ./install.sh from your clone once")
+        raise typer.Exit(1)
+
+    if not Path(source).exists():
+        console.print(f"[red]install source missing:[/red] {source}")
+        console.print("re-clone the repo and run ./install.sh, then `mastisk update` will work")
+        raise typer.Exit(1)
+
+    repo = Path(source)
+
+    # Fetch so we can compare before deciding to pull
+    console.print(f"[dim]repo:[/dim] {repo}")
+    _run_in(repo, ["git", "fetch", "--quiet"])
+    behind = _git_output(repo, ["rev-list", "--count", "HEAD..@{u}"]).strip() or "0"
+    ahead  = _git_output(repo, ["rev-list", "--count", "@{u}..HEAD"]).strip() or "0"
+    dirty  = bool(_git_output(repo, ["status", "--porcelain"]).strip())
+    current = _git_output(repo, ["rev-parse", "--short", "HEAD"]).strip()
+
+    console.print(f"[dim]current:[/dim] {current}  [dim]behind:[/dim] {behind}  [dim]ahead:[/dim] {ahead}"
+                  + (f"  [yellow]local changes[/yellow]" if dirty else ""))
+
+    if check:
+        if behind == "0":
+            console.print("[green]up to date[/green]")
+        else:
+            console.print(f"[yellow]{behind} new commit(s) available[/yellow] — run `mastisk update`")
+            _run_in(repo, ["git", "log", "--oneline", f"HEAD..@{{u}}"], capture=False)
+        raise typer.Exit(0)
+
+    if behind == "0" and not dirty:
+        console.print("[green]already up to date[/green]")
+        # Even so, rebuild+reinstall lets us be idempotent (useful after tweaks)
+        if not typer.confirm("re-run rebuild + reinstall anyway?", default=False):
+            raise typer.Exit(0)
+    elif dirty:
+        console.print("[yellow]uncommitted changes in repo — pull skipped. rebuild+reinstall only.[/yellow]")
+    else:
+        console.print(f"[cyan]pulling {behind} commit(s)…[/cyan]")
+        _run_in(repo, ["git", "pull", "--ff-only", "--quiet"])
+
+    if not skip_build:
+        if (repo / "frontend").is_dir():
+            console.print("[cyan]rebuilding frontend…[/cyan]")
+            if not (repo / "frontend" / "node_modules").is_dir():
+                _run_in(repo / "frontend", ["npm", "install", "--silent"])
+            _run_in(repo / "frontend", ["npm", "run", "build"], capture=True)
+
+    console.print("[cyan]reinstalling (uv tool install --force)…[/cyan]")
+    _run_in(repo, ["uv", "tool", "install", "--force", "--reinstall", "."])
+
+    # Refresh the breadcrumb in case the repo moved
+    (data_dir() / "install_source").write_text(str(repo))
+
+    new_commit = _git_output(repo, ["rev-parse", "--short", "HEAD"]).strip()
+    console.print(f"[green]✓ installed[/green] {current} → {new_commit}")
+
+    if not skip_restart and _launchd_loaded():
+        console.print("[cyan]restarting running agent via launchctl…[/cyan]")
+        subprocess.run(
+            ["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/{_PLIST_LABEL}"],
+            check=False,
+        )
+        console.print("[green]✓ restarted[/green]")
+
+
+def _load_install_source() -> Optional[str]:
+    p = data_dir() / "install_source"
+    if p.exists():
+        return p.read_text().strip()
+    # Legacy fallback: look for a clone next to ~/Code
+    for guess in ["~/Code/mastisk", "~/mastisk"]:
+        gp = Path(guess).expanduser()
+        if (gp / ".git").is_dir() and (gp / "pyproject.toml").exists():
+            return str(gp)
+    return None
+
+
+def _run_in(cwd: Path, cmd: list[str], *, capture: bool = True) -> None:
+    if capture:
+        r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+    else:
+        r = subprocess.run(cmd, cwd=cwd)
+    if r.returncode != 0:
+        if capture:
+            console.print(f"[red]{' '.join(cmd)}[/red]\n{r.stdout}\n{r.stderr}")
+        raise typer.Exit(r.returncode)
+
+
+def _git_output(cwd: Path, args: list[str]) -> str:
+    r = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
+    return r.stdout if r.returncode == 0 else ""
+
+
+def _launchd_loaded() -> bool:
+    r = subprocess.run(["launchctl", "list"], capture_output=True, text=True)
+    return _PLIST_LABEL in r.stdout
+
+
 @app.command(name="seed-demo")
 def seed_demo_cmd():
     """Load the Test-time compute demo wiki (what the design shows). Safe to run again."""

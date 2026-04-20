@@ -38,6 +38,10 @@ if [ "$UPDATE" -eq 1 ]; then
   (cd frontend && npm install --silent && npm run build) >/dev/null
   echo "== Reinstalling Python package =="
   uv tool install --force --reinstall . >/dev/null
+  # Refresh install_source breadcrumb
+  MASTISK_CFG_DIR="$HOME/Library/Application Support/Mastisk"
+  mkdir -p "$MASTISK_CFG_DIR"
+  printf '%s\n' "$REPO_ROOT" > "$MASTISK_CFG_DIR/install_source"
   echo "✓ binary refreshed at $(command -v mastisk || echo '~/.local/bin/mastisk')"
   # Restart if launchd agent is loaded
   if launchctl list 2>/dev/null | grep -q 'com.mastisk.agents'; then
@@ -115,6 +119,11 @@ echo "== Installing mastisk (uv tool) =="
 uv tool install --force --reinstall . >/dev/null
 echo "✓ mastisk installed to ~/.local/share/uv/tools/mastisk"
 echo "✓ binary at $(command -v mastisk || echo '~/.local/bin/mastisk')"
+
+# Breadcrumb for `mastisk update` — tells the command where this repo lives
+MASTISK_CFG_DIR="$HOME/Library/Application Support/Mastisk"
+mkdir -p "$MASTISK_CFG_DIR"
+printf '%s\n' "$REPO_ROOT" > "$MASTISK_CFG_DIR/install_source"
 
 # ─────────────────────────────────────────────────────────── embed model ──
 if command -v ollama >/dev/null 2>&1; then
