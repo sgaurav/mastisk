@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from './api';
+import { useRoute } from './router';
 import { useFeedStream } from './stream';
 import type {
   Article, AgentInfo, Digest, FeedTick, PinnedItem, VaultItem, View,
@@ -22,64 +23,74 @@ export function App() {
   const [theme, setTheme] = useState<'light' | 'dark'>(
     (localStorage.getItem('mk-theme') as 'light' | 'dark') || 'light',
   );
-  const [view, setView] = useState<View>(
-    (localStorage.getItem('mk-view') as View) || 'article',
-  );
-  const [currentArticle, setCurrentArticle] = useState<string>(
-    localStorage.getItem('mk-article') || 'ttc',
-  );
+
+  const { route, navigate: routeNavigate, replace } = useRoute();
+  const { view, articleId: currentArticle } = route;
+
   const [sideOpen, setSideOpen] = useState(window.innerWidth > 900);
   const [railOpen, setRailOpen] = useState(window.innerWidth > 900);
   const [askOpen, setAskOpen] = useState(false);
   const [askCtx, setAskCtx] = useState<{ prompt: string; selection: string | null; article_id?: string } | null>(null);
 
-  // Data
   const [sidebar, setSidebar] = useState<{ vault: VaultItem[]; pinned: PinnedItem[]; user: import('./types').UserInfo } | null>(null);
   const [article, setArticle] = useState<Article | null>(null);
   const [digest, setDigest] = useState<Digest | null>(null);
   const [feed, setFeed] = useState<FeedTick[]>([]);
   const [agents, setAgents] = useState<AgentInfo[]>([]);
 
-  // Live feed
   const { rows: liveRows } = useFeedStream<FeedTick>([]);
   const mergedFeed: FeedTick[] = [...liveRows, ...feed];
 
-  // Persist view state
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('mk-theme', theme);
   }, [theme]);
-  useEffect(() => { localStorage.setItem('mk-view', view); }, [view]);
-  useEffect(() => { localStorage.setItem('mk-article', currentArticle); }, [currentArticle]);
 
-  // Initial fetches
   useEffect(() => {
     void api.sidebar().then(setSidebar).catch(console.error);
     void api.feed().then((d) => { setFeed(d.feed); setAgents(d.agents); }).catch(console.error);
     void api.digest().then(setDigest).catch(console.error);
   }, []);
 
-  // Article fetch on selection change. If the article is missing (fresh install),
-  // flip to the Digest so the user sees something useful instead of "loading…".
+  // Refresh sidebar counts + digest whenever agents emit a new tick, so the
+  // "Concepts 1 → 2" counter updates as articles are compiled without a reload.
+  // Also polls on a 30s floor as a safety net in case the SSE stream drops.
+  const tickKey = liveRows[0] ? `${(liveRows[0] as FeedTick).t}-${liveRows.length}` : '';
   useEffect(() => {
-    if (!currentArticle) return;
+    if (!tickKey) return;
+    void api.sidebar().then(setSidebar).catch(() => {});
+    void api.digest().then(setDigest).catch(() => {});
+  }, [tickKey]);
+  useEffect(() => {
+    const id = setInterval(() => {
+      void api.sidebar().then(setSidebar).catch(() => {});
+      void api.digest().then(setDigest).catch(() => {});
+    }, 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Load the article whenever the route points at one. On 404, bounce to the
+  // digest so a dead deep-link doesn't leave the user staring at "loading…".
+  useEffect(() => {
+    if (view !== 'article' || !currentArticle) {
+      setArticle(null);
+      return;
+    }
     api.article(currentArticle)
       .then(setArticle)
       .catch(() => {
         setArticle(null);
-        if (view === 'article') setView('digest');
+        replace('digest');
       });
-  }, [currentArticle]);
+  }, [view, currentArticle, replace]);
 
   const navigate = useCallback((v: View, id?: string) => {
-    setView(v);
-    if (v === 'article' && id) setCurrentArticle(id);
-    // Mobile: close sidebar after navigation
+    routeNavigate(v, id);
     if (window.innerWidth <= 900) setSideOpen(false);
-  }, []);
+  }, [routeNavigate]);
 
   const openAsk = useCallback((prompt: string, selection: string | null) => {
-    setAskCtx({ prompt, selection, article_id: currentArticle });
+    setAskCtx({ prompt, selection, article_id: currentArticle ?? undefined });
     setAskOpen(true);
   }, [currentArticle]);
 
@@ -103,7 +114,7 @@ export function App() {
           pinned={sidebar.pinned}
           user={sidebar.user}
           currentView={view}
-          currentArticle={currentArticle}
+          currentArticle={currentArticle ?? ''}
           onNavigate={navigate}
         />
       )}

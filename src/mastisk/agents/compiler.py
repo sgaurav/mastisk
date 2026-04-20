@@ -59,6 +59,25 @@ class Compiler(Agent):
     name = "compiler"
     tick_seconds = 300  # 5 min
 
+    # Drain up to this many jobs per tick. Keeps a single tick bounded so a
+    # giant backlog can't monopolise the scheduler; APScheduler's max_instances=1
+    # prevents overlap with the next tick anyway.
+    max_jobs_per_tick = 20
+
+    async def run_once(self) -> None:
+        for _ in range(self.max_jobs_per_tick):
+            job = self._pick_job()
+            if not job:
+                return
+            log.info("%s: picking job %s (%s)", self.name, job["id"], job["kind"])
+            self._mark_running(job["id"])
+            try:
+                await self._handle(job)
+                self._mark_done(job["id"])
+            except Exception as e:
+                log.exception("%s: job %s failed", self.name, job["id"])
+                self._mark_failed(job["id"], str(e))
+
     async def _handle(self, job: dict) -> None:
         payload = json.loads(job["payload_json"] or "{}")
         source_id = payload.get("source_id")

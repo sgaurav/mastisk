@@ -48,7 +48,6 @@ export function Titlebar({ view, articleTitle, articleKind, theme, onTheme, onTo
 
   return (
     <div className="titlebar">
-      <div className="tb-dots"><div className="tb-dot r"/><div className="tb-dot y"/><div className="tb-dot g"/></div>
       <div className="tb-crumb">
         <span style={{color:'var(--fg-mute)'}}>mastisk</span>
         {crumb.map((c, i) => (

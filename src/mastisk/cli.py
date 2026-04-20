@@ -665,6 +665,13 @@ synthesizer = 10
 
 
 def _plist_template(binary: str, log_path: str) -> str:
+    home = str(Path.home())
+    # launchd's default PATH is minimal — extend it so subprocess calls to
+    # `claude`, `ollama`, `node`, etc. installed in the user's ~/.local/bin
+    # or /opt/homebrew/bin actually resolve.
+    agent_path = (
+        f"{home}/.local/bin:{home}/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+    )
     return f'''<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -677,6 +684,11 @@ def _plist_template(binary: str, log_path: str) -> str:
   </array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><false/>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>{agent_path}</string>
+    <key>HOME</key><string>{home}</string>
+  </dict>
   <key>StandardOutPath</key><string>{log_path}</string>
   <key>StandardErrorPath</key><string>{log_path}</string>
 </dict>

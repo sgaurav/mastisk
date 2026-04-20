@@ -38,23 +38,49 @@ export function QueueView() {
           No jobs yet. Subscribe a feed or queue a YouTube URL to give the agents something to do.
         </div>
       ) : (
-        <div style={{border:'1px solid var(--line)',borderRadius:8,overflow:'hidden'}}>
-          {jobs.map((j) => (
-            <div key={j.id} style={{display:'grid',gridTemplateColumns:'60px 100px 80px 1fr auto',gap:12,padding:'12px 16px',borderTop:'1px solid var(--line-soft)',alignItems:'center',fontFamily:'var(--mono)',fontSize:12}}>
-              <span style={{color:'var(--fg-faint)'}}>#{j.id}</span>
-              <span style={{color:'var(--fg)'}}>{j.agent}</span>
-              <span style={{color:'var(--fg-mute)'}}>{j.kind}</span>
-              <span style={{color: statusColor(j.status)}}>
-                {j.status}{j.attempts > 1 ? ` · retry ${j.attempts}` : ''}
-                {j.error && <span style={{display:'block',color:'var(--fg-faint)',fontSize:11,marginTop:2}} title={j.error}>{j.error.slice(0, 120)}</span>}
-              </span>
-              <span style={{color:'var(--fg-faint)',fontSize:11}}>{relativeTs(j.created_at)}</span>
-            </div>
-          ))}
+        <div className="queue-list">
+          {jobs.map((j) => <QueueRow key={j.id} job={j}/>)}
         </div>
       )}
     </div>
   );
+}
+
+function QueueRow({ job }: { job: Job }) {
+  const title = job.detail.title ?? fallbackTitle(job);
+  const subtitle = job.detail.subtitle;
+  const srcKind = job.detail.source_kind;
+
+  return (
+    <div className="queue-row">
+      <div className="queue-id">#{job.id}</div>
+      <div className="queue-title">
+        <div className="queue-title-line" title={title}>{title}</div>
+        <div className="queue-meta">
+          <span className="queue-agent">{job.agent}</span>
+          <span className="queue-sep">·</span>
+          <span>{job.kind}</span>
+          {srcKind && <><span className="queue-sep">·</span><span>{srcKind}</span></>}
+          {subtitle && <><span className="queue-sep">·</span><span className="queue-host">{subtitle}</span></>}
+        </div>
+      </div>
+      <div className="queue-status">
+        <span style={{color: statusColor(job.status)}}>
+          {job.status}{job.attempts > 1 ? ` · retry ${job.attempts}` : ''}
+        </span>
+        {job.error && (
+          <div className="queue-error" title={job.error}>
+            {job.error.length > 140 ? `${job.error.slice(0, 140)}…` : job.error}
+          </div>
+        )}
+      </div>
+      <div className="queue-time">{relativeTs(job.created_at)}</div>
+    </div>
+  );
+}
+
+function fallbackTitle(j: Job): string {
+  return j.agent === 'scout' ? 'Polling feeds' : `${j.agent} · ${j.kind}`;
 }
 
 function statusColor(s: Job['status']): string {

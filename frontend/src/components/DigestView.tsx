@@ -35,7 +35,7 @@ export function DigestView({ digest, onNavigate, onAsk }: Props) {
             <span>{t.sources} sources</span>
           </div>
           <h2 className="thread-title" onClick={() => t.article_id && onNavigate('article', t.article_id)}>{t.title}</h2>
-          <p className="thread-body">{t.body}</p>
+          <p className="thread-body" dangerouslySetInnerHTML={{ __html: t.body }}/>
           <div className="thread-links">
             {t.links.map((l) => <span key={l} className="chip" onClick={() => onAsk(`Tell me about ${l}`, l)}>{l}</span>)}
           </div>

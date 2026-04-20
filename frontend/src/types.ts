@@ -81,6 +81,13 @@ export interface Feed {
   added_at: string;
 }
 
+export interface JobDetail {
+  title: string | null;
+  subtitle: string | null;
+  url: string | null;
+  source_kind: string | null;
+}
+
 export interface Job {
   id: number;
   agent: string;
@@ -91,6 +98,7 @@ export interface Job {
   started_at: string | null;
   finished_at: string | null;
   error: string | null;
+  detail: JobDetail;
 }
 
 export interface GraphNode {

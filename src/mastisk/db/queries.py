@@ -145,11 +145,23 @@ def replace_sections(conn: sqlite3.Connection, article_id: str, sections: Iterab
 
 
 def set_related(conn: sqlite3.Connection, article_id: str, links: Iterable[dict]) -> None:
+    """Replace outgoing links for an article.
+
+    Silently drops link targets that don't exist yet — the Compiler often
+    references sibling articles that haven't been written on this pass. A
+    scheduled backfill reconciles these once the graph catches up.
+    """
     conn.execute("DELETE FROM links WHERE from_article = ?", (article_id,))
     for r in links:
+        target = r.get("id")
+        if not target or target == article_id:
+            continue
+        exists = conn.execute("SELECT 1 FROM articles WHERE id = ?", (target,)).fetchone()
+        if not exists:
+            continue
         conn.execute(
             "INSERT OR IGNORE INTO links (from_article, to_article, weight, snippet) VALUES (?, ?, ?, ?)",
-            (article_id, r["id"], r.get("weight", 0.5), r.get("snippet")),
+            (article_id, target, r.get("weight", 0.5), r.get("snippet")),
         )
 
 

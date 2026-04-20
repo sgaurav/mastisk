@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import shutil
 import uuid
 from pathlib import Path
@@ -26,6 +27,27 @@ class ClaudeError(RuntimeError):
     pass
 
 
+def _resolve_cmd(cmd: str) -> str:
+    """Return an absolute path for ``cmd``.
+
+    launchd and systemd services run with a minimal PATH, so a bare name like
+    ``claude`` fails to resolve even though the interactive shell finds it.
+    We augment PATH with the common user-install locations before asking
+    ``shutil.which`` — good enough without forcing the user to hand-edit config.
+    """
+    if "/" in cmd:
+        return cmd
+    extra = [
+        str(Path.home() / ".local" / "bin"),
+        str(Path.home() / "bin"),
+        "/opt/homebrew/bin",
+        "/usr/local/bin",
+    ]
+    path = os.pathsep.join([*extra, os.environ.get("PATH", "")])
+    resolved = shutil.which(cmd, path=path)
+    return resolved or cmd
+
+
 async def run_claude(
     prompt: str,
     *,
@@ -35,7 +57,7 @@ async def run_claude(
 ) -> dict:
     """Run Claude headlessly, return parsed JSON from stdout."""
     s = get_settings()
-    claude_cmd = s.claude_cmd
+    claude_cmd = _resolve_cmd(s.claude_cmd)
 
     job_id = uuid.uuid4().hex[:8]
     workdir = tmp_dir() / f"job-{job_id}"

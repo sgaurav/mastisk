@@ -7,11 +7,11 @@ interface Props {
   onNavigate: (view: View, id?: string) => void;
 }
 
-const JUMPS = [
-  { id: 'digest',  l: 'Daily Digest',     d: 'Today' },
-  { id: 'article', l: 'Test-time compute', d: 'Concept · hot this week', articleId: 'ttc' },
-  { id: 'graph',   l: 'Graph view',        d: '522 pages' },
-  { id: 'agents',  l: 'Agents',            d: '5 active' },
+const JUMPS: { id: View; l: string; d: string }[] = [
+  { id: 'digest', l: 'Daily Digest',   d: 'Today' },
+  { id: 'queue',  l: 'Reading queue',  d: 'Jobs & ingest' },
+  { id: 'graph',  l: 'Graph view',     d: 'Browse the wiki' },
+  { id: 'agents', l: 'Agents',         d: 'Live activity' },
 ];
 
 export function SystemRail({ feed, agents, onNavigate }: Props) {
@@ -21,7 +21,7 @@ export function SystemRail({ feed, agents, onNavigate }: Props) {
         <div className="rail-h">Jump to</div>
         {JUMPS.map((j) => (
           <div key={j.id} className="rel-row"
-            onClick={() => onNavigate(j.id === 'article' ? 'article' : (j.id as View), j.articleId)}
+            onClick={() => onNavigate(j.id)}
             style={{flexDirection:'column',alignItems:'flex-start',gap:2}}
           >
             <div style={{color:'var(--fg)',fontSize:13}}>{j.l}</div>

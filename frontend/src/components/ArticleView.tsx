@@ -99,7 +99,7 @@ export function ArticleView({ article, onAsk, onNavigate }: Props) {
         </div>
       )}
 
-      <p className="art-summary">{article.summary}</p>
+      <p className="art-summary" dangerouslySetInnerHTML={{ __html: article.summary }}/>
 
       <div className="art-stats">
         <div className="art-stat"><div className="v">{article.sources}</div><div className="l">Sources</div></div>

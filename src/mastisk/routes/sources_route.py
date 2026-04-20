@@ -95,10 +95,65 @@ def list_sources(limit: int = 50):
 
 @router.get("/jobs")
 def list_jobs(limit: int = 50):
+    """Return jobs with payload-derived detail so the queue view can show what's
+    actually being compiled/scouted instead of opaque IDs."""
+    import json as _json
+
     with connect() as conn:
         rows = [dict(r) for r in conn.execute(
             """SELECT id, agent, kind, status, attempts, created_at, started_at, finished_at, error, payload_json
                FROM jobs ORDER BY id DESC LIMIT ?""",
             (limit,),
         )]
+        for r in rows:
+            payload = {}
+            try:
+                payload = _json.loads(r.get("payload_json") or "{}")
+            except Exception:
+                payload = {}
+
+            title = None
+            subtitle = None
+            source_kind = None
+            url = None
+
+            if r["agent"] == "compiler" and payload.get("source_id"):
+                src = conn.execute(
+                    "SELECT title, url, kind FROM sources WHERE id=?",
+                    (payload["source_id"],),
+                ).fetchone()
+                if src:
+                    title = src["title"]
+                    url = src["url"]
+                    source_kind = src["kind"]
+                    subtitle = _hostname(src["url"])
+                else:
+                    title = f"source {payload['source_id']}"
+            elif r["agent"] == "scout" and payload.get("url"):
+                url = payload["url"]
+                feed = conn.execute(
+                    "SELECT title FROM rss_feeds WHERE url=?", (url,),
+                ).fetchone()
+                title = (feed["title"] if feed else None) or _hostname(url) or url
+                subtitle = _hostname(url)
+                source_kind = "rss"
+
+            r["detail"] = {
+                "title": title,
+                "subtitle": subtitle,
+                "url": url,
+                "source_kind": source_kind,
+            }
+            r.pop("payload_json", None)
     return {"jobs": rows}
+
+
+def _hostname(url: str | None) -> str | None:
+    if not url:
+        return None
+    from urllib.parse import urlparse
+    try:
+        host = urlparse(url).hostname or ""
+    except Exception:
+        return None
+    return host.removeprefix("www.") or None
