@@ -166,4 +166,43 @@ export interface AskResponse {
 
 export type View =
   | 'article' | 'digest' | 'feed' | 'agents'
-  | 'graph' | 'mobile' | 'queue' | 'ingest' | 'lint';
+  | 'graph' | 'mobile' | 'queue' | 'ingest' | 'lint' | 'settings';
+
+export interface BudgetValues {
+  scout: number;
+  listener: number;
+  compiler: number;
+  linter: number;
+  synthesizer: number;
+}
+
+export interface SettingsValues {
+  claude_cmd: string;
+  ollama_local_url: string;
+  ollama_local_only: boolean;
+  ollama_cloud_url: string;
+  ollama_cloud_key_set: boolean;
+  embed_model: string;
+  summarize_model_cheap: string;
+  summarize_model_heavy: string;
+  budget: BudgetValues;
+}
+
+export interface SettingsBundle {
+  values: SettingsValues;
+  model_roles: Record<string, string>;
+  config_path: string;
+  cloud_active: boolean;
+}
+
+export interface SettingsPatch {
+  claude_cmd?: string;
+  ollama_local_url?: string;
+  ollama_local_only?: boolean;
+  ollama_cloud_url?: string;
+  ollama_cloud_key?: string;  // "" clears, non-empty sets, omit to leave
+  embed_model?: string;
+  summarize_model_cheap?: string;
+  summarize_model_heavy?: string;
+  budget?: BudgetValues;
+}

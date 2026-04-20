@@ -64,17 +64,17 @@ function QueueRow({ job }: { job: Job }) {
           {subtitle && <><span className="queue-sep">·</span><span className="queue-host">{subtitle}</span></>}
         </div>
       </div>
-      <div className="queue-status">
-        <span style={{color: statusColor(job.status)}}>
+      <div className="queue-end">
+        <span className="queue-status" style={{color: statusColor(job.status)}}>
           {job.status}{job.attempts > 1 ? ` · retry ${job.attempts}` : ''}
         </span>
-        {job.error && (
-          <div className="queue-error" title={job.error}>
-            {job.error.length > 140 ? `${job.error.slice(0, 140)}…` : job.error}
-          </div>
-        )}
+        <span className="queue-time">{relativeTs(job.created_at)}</span>
       </div>
-      <div className="queue-time">{relativeTs(job.created_at)}</div>
+      {job.error && (
+        <div className="queue-error" title={job.error}>
+          {job.error.length > 200 ? `${job.error.slice(0, 200)}…` : job.error}
+        </div>
+      )}
     </div>
   );
 }

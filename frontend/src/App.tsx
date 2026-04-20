@@ -17,6 +17,7 @@ import { GraphView } from './components/GraphView';
 import { AskDrawer } from './components/AskDrawer';
 import { IngestView } from './components/IngestView';
 import { QueueView } from './components/QueueView';
+import { SettingsView } from './components/SettingsView';
 import { SystemCheckView } from './components/SystemCheckView';
 
 export function App() {
@@ -129,6 +130,7 @@ export function App() {
         {view === 'ingest' && <IngestView/>}
         {view === 'queue' && <QueueView/>}
         {view === 'lint' && <SystemCheckView/>}
+        {view === 'settings' && <SettingsView/>}
         {view === 'mobile' && (
           <div className="view">
             <div className="view-h">System</div>

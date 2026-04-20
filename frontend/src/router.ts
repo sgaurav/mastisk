@@ -17,6 +17,7 @@ const VIEW_PATHS: Record<string, View> = {
   '/health': 'lint',
   '/lint': 'lint',
   '/mobile': 'mobile',
+  '/settings': 'settings',
 };
 
 const PATH_FOR_VIEW: Record<View, string> = {
@@ -29,6 +30,7 @@ const PATH_FOR_VIEW: Record<View, string> = {
   ingest: '/ingest',
   lint: '/health',
   mobile: '/mobile',
+  settings: '/settings',
 };
 
 export function parseRoute(pathname: string): Route {

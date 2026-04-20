@@ -11,6 +11,7 @@ const CRUMB: Record<string, readonly string[]> = {
   queue:   ['Today',  'Reading queue'],
   ingest:  ['System', 'Sources & ingest'],
   lint:    ['System', 'Health check'],
+  settings:['System', 'Settings'],
 };
 
 interface Props {

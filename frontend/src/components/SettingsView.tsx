@@ -1,0 +1,280 @@
+import { useEffect, useState } from 'react';
+import { api } from '../api';
+import type { SettingsBundle, SettingsPatch } from '../types';
+
+type SaveState = 'idle' | 'saving' | 'saved' | 'error';
+
+export function SettingsView() {
+  const [bundle, setBundle] = useState<SettingsBundle | null>(null);
+  const [draft, setDraft] = useState<SettingsPatch>({});
+  const [keyInput, setKeyInput] = useState('');
+  const [save, setSave] = useState<SaveState>('idle');
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    void api.settings().then((b) => { setBundle(b); setDraft({}); setKeyInput(''); }).catch((e) => setErr(String(e)));
+  }, []);
+
+  if (!bundle) {
+    return (
+      <div className="view">
+        {err ? <p style={{color:'#c53030'}}>{err}</p> : <p style={{color:'var(--fg-faint)'}}>loading…</p>}
+      </div>
+    );
+  }
+
+  const v = bundle.values;
+  const cur = <K extends keyof typeof v>(k: K) => (draft as Record<string, unknown>)[k as string] ?? v[k];
+  const set = (patch: SettingsPatch) => { setDraft((d) => ({ ...d, ...patch })); setSave('idle'); setErr(null); };
+  const setBudget = (k: keyof typeof v.budget, n: number) => {
+    const base = draft.budget ?? { ...v.budget };
+    set({ budget: { ...base, [k]: n } });
+  };
+
+  const submit = async () => {
+    setSave('saving');
+    try {
+      const patch: SettingsPatch = { ...draft };
+      // Only send the cloud key if the user actually typed one (including "" to clear).
+      if (keyInput !== '') patch.ollama_cloud_key = keyInput;
+      await api.saveSettings(patch);
+      const fresh = await api.settings();
+      setBundle(fresh);
+      setDraft({});
+      setKeyInput('');
+      setSave('saved');
+    } catch (e) {
+      setErr(String(e));
+      setSave('error');
+    }
+  };
+
+  const clearKey = async () => {
+    setSave('saving');
+    try {
+      await api.saveSettings({ ollama_cloud_key: '' });
+      const fresh = await api.settings();
+      setBundle(fresh);
+      setKeyInput('');
+      setSave('saved');
+    } catch (e) {
+      setErr(String(e));
+      setSave('error');
+    }
+  };
+
+  const cloudActive = bundle.cloud_active;
+  const hasDraft = Object.keys(draft).length > 0 || keyInput !== '';
+
+  return (
+    <div className="view settings-view">
+      <div className="view-h">System · Settings</div>
+      <h1 className="view-title">Settings.</h1>
+      <p className="view-sub">
+        Write straight into <code style={{fontFamily:'var(--mono)',fontSize:12,background:'var(--bg-sunk)',padding:'1px 6px',borderRadius:4}}>{bundle.config_path}</code>.
+        Model, URL, and budget changes apply immediately; the Claude CLI path is picked up on the next subprocess call.
+      </p>
+
+      <Section title="Claude (full-article compiler)">
+        <Field
+          label="claude_cmd"
+          hint={bundle.model_roles.claude_cmd}
+          value={String(cur('claude_cmd'))}
+          onChange={(val) => set({ claude_cmd: val })}
+          placeholder="claude"
+        />
+      </Section>
+
+      <Section title="Ollama connection">
+        <Field
+          label="ollama_local_url"
+          hint="Where your local Ollama daemon is listening. The default port is 11434."
+          value={String(cur('ollama_local_url'))}
+          onChange={(val) => set({ ollama_local_url: val })}
+          placeholder="http://localhost:11434"
+        />
+        <Toggle
+          label="ollama_local_only"
+          hint="When on, cloud-proxied models are never called even if a key is configured. Turn off to use Ollama Cloud."
+          value={Boolean(cur('ollama_local_only'))}
+          onChange={(val) => set({ ollama_local_only: val })}
+        />
+        <div className="settings-row">
+          <label className="settings-label">
+            <div className="k">ollama_cloud_key</div>
+            <div className="h">
+              Sign in to <a href="https://ollama.com" target="_blank" rel="noreferrer">ollama.com</a> and paste the API key here.
+              Stored only in your local config.toml.
+            </div>
+          </label>
+          <div className="settings-ctl">
+            <input
+              type="password"
+              autoComplete="off"
+              value={keyInput}
+              placeholder={v.ollama_cloud_key_set ? '•••••••• (set — leave blank to keep)' : 'paste a key to enable cloud'}
+              onChange={(e) => { setKeyInput(e.target.value); setSave('idle'); }}
+            />
+            <div className="settings-inline-note">
+              {v.ollama_cloud_key_set ? (
+                <>
+                  <span>Key is set.</span>
+                  <button className="chip" onClick={() => void clearKey()} disabled={save==='saving'}>Clear key</button>
+                </>
+              ) : (
+                <span>No cloud key on file.</span>
+              )}
+              <span className={`pill ${cloudActive ? 'on' : 'off'}`}>
+                cloud {cloudActive ? 'active' : 'inactive'}
+              </span>
+            </div>
+            {!cloudActive && v.ollama_cloud_key_set && v.ollama_local_only && (
+              <div className="settings-inline-note warn">
+                A key is configured but ollama_local_only is on — toggle it off to actually use the cloud.
+              </div>
+            )}
+          </div>
+        </div>
+        <Field
+          label="ollama_cloud_url"
+          hint="Only edit this if you're proxying Ollama Cloud through your own host."
+          value={String(cur('ollama_cloud_url'))}
+          onChange={(val) => set({ ollama_cloud_url: val })}
+          placeholder="https://ollama.com"
+        />
+      </Section>
+
+      <Section title="Models">
+        <Field
+          label="embed_model"
+          hint={bundle.model_roles.embed_model}
+          value={String(cur('embed_model'))}
+          onChange={(val) => set({ embed_model: val })}
+          placeholder="nomic-embed-text"
+        />
+        <Field
+          label="summarize_model_cheap"
+          hint={bundle.model_roles.summarize_model_cheap}
+          value={String(cur('summarize_model_cheap'))}
+          onChange={(val) => set({ summarize_model_cheap: val })}
+          placeholder="qwen3.5:4b"
+        />
+        <Field
+          label="summarize_model_heavy"
+          hint={bundle.model_roles.summarize_model_heavy}
+          value={String(cur('summarize_model_heavy'))}
+          onChange={(val) => set({ summarize_model_heavy: val })}
+          placeholder="kimi-k2.5:cloud"
+        />
+      </Section>
+
+      <Section title="Daily agent budgets">
+        <p className="settings-section-hint">
+          Caps on how many items each agent will act on per day. Stops a chatty feed from burning through cloud calls.
+        </p>
+        {(Object.keys(v.budget) as (keyof typeof v.budget)[]).map((k) => (
+          <NumberField
+            key={k}
+            label={k}
+            value={Number((draft.budget ?? v.budget)[k])}
+            onChange={(n) => setBudget(k, n)}
+          />
+        ))}
+      </Section>
+
+      <div className="settings-footer">
+        <button
+          className="settings-save"
+          onClick={() => void submit()}
+          disabled={!hasDraft || save === 'saving'}
+        >
+          {save === 'saving' ? 'Saving…' : save === 'saved' ? 'Saved' : 'Save changes'}
+        </button>
+        {hasDraft && (
+          <button className="settings-cancel" onClick={() => { setDraft({}); setKeyInput(''); setSave('idle'); }}>
+            Discard
+          </button>
+        )}
+        {err && <span className="settings-error">{err}</span>}
+      </div>
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="settings-section">
+      <h2 className="settings-section-title">{title}</h2>
+      {children}
+    </section>
+  );
+}
+
+function Field({
+  label, hint, value, onChange, placeholder,
+}: {
+  label: string;
+  hint: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div className="settings-row">
+      <label className="settings-label">
+        <div className="k">{label}</div>
+        <div className="h">{hint}</div>
+      </label>
+      <div className="settings-ctl">
+        <input type="text" value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
+      </div>
+    </div>
+  );
+}
+
+function NumberField({
+  label, value, onChange,
+}: { label: string; value: number; onChange: (n: number) => void }) {
+  return (
+    <div className="settings-row">
+      <label className="settings-label">
+        <div className="k">{label}</div>
+      </label>
+      <div className="settings-ctl settings-ctl-number">
+        <input
+          type="number" min={0} max={100000} value={Number.isFinite(value) ? value : 0}
+          onChange={(e) => onChange(Math.max(0, Math.min(100000, Number(e.target.value) || 0)))}
+        />
+      </div>
+    </div>
+  );
+}
+
+function Toggle({
+  label, hint, value, onChange,
+}: {
+  label: string;
+  hint: string;
+  value: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <div className="settings-row">
+      <label className="settings-label">
+        <div className="k">{label}</div>
+        <div className="h">{hint}</div>
+      </label>
+      <div className="settings-ctl">
+        <button
+          className={`settings-toggle ${value ? 'on' : 'off'}`}
+          onClick={() => onChange(!value)}
+          type="button"
+          aria-pressed={value}
+        >
+          <span className="dot"/>
+          <span className="lbl">{value ? 'on' : 'off'}</span>
+        </button>
+      </div>
+    </div>
+  );
+}

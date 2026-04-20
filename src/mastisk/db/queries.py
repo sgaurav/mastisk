@@ -218,6 +218,7 @@ def vault_tree(conn: sqlite3.Connection) -> list[dict]:
         {"kind": "page", "id": "agents", "label": "Agents", "glyph": "◯"},
         {"kind": "page", "id": "ingest", "label": "Sources & ingest", "glyph": "↧"},
         {"kind": "page", "id": "lint", "label": "System health", "glyph": "✓"},
+        {"kind": "page", "id": "settings", "label": "Settings", "glyph": "⚙"},
     ]
 
 

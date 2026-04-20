@@ -10,7 +10,7 @@ interface Props {
   onNavigate: (view: View, id?: string) => void;
 }
 
-const SYS_VIEWS = new Set<View>(['digest', 'queue', 'feed', 'agents', 'graph', 'ingest', 'lint']);
+const SYS_VIEWS = new Set<View>(['digest', 'queue', 'feed', 'agents', 'graph', 'ingest', 'lint', 'settings']);
 
 export function Sidebar({ vault, pinned, user, currentView, currentArticle, onNavigate }: Props) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});

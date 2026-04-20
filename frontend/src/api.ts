@@ -1,6 +1,6 @@
 import type {
   Article, AskResponse, Digest, Feed, FeedTick, AgentInfo,
-  GraphData, Job, PinnedItem, UserInfo, VaultItem,
+  GraphData, Job, PinnedItem, SettingsBundle, SettingsPatch, UserInfo, VaultItem,
 } from './types';
 
 const BASE = '/api';
@@ -87,5 +87,13 @@ export const api = {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ content }),
+    }),
+
+  settings: () => j<SettingsBundle>(`${BASE}/settings`),
+  saveSettings: (patch: SettingsPatch) =>
+    j<{ ok: boolean }>(`${BASE}/settings`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(patch),
     }),
 };

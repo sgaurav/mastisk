@@ -27,7 +27,13 @@ class AgentBudget(BaseSettings):
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
+    # populate_by_name: accept both the field name (from TOML) AND the alias
+    # (from env vars). Without this, pydantic v2 silently drops TOML kwargs
+    # for any Field with an alias — so e.g. ollama_local_only in config.toml
+    # would be ignored and fall back to the default.
+    model_config = SettingsConfigDict(
+        env_file=".env", extra="ignore", case_sensitive=False, populate_by_name=True,
+    )
 
     # Server
     host: str = Field(default="0.0.0.0", alias="MASTISK_HOST")

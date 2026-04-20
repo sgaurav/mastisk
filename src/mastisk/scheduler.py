@@ -12,6 +12,11 @@ log = logging.getLogger("mastisk.scheduler")
 async def start_scheduler():
     sched = AsyncIOScheduler(timezone="UTC")
 
+    # Reclaim orphaned `running` jobs — if a previous process was killed
+    # mid-compile, those rows never transition to done/failed and _pick_job
+    # ignores them (only picks `queued`), so they'd be stuck forever.
+    _reclaim_orphaned_running()
+
     # APScheduler's "interval" trigger fires *after* one interval; passing
     # next_run_time forces the first tick a few seconds after startup so
     # queued jobs drain immediately instead of waiting tick_seconds.
@@ -44,3 +49,13 @@ async def start_scheduler():
 
 async def stop_scheduler(sched) -> None:
     sched.shutdown(wait=False)
+
+
+def _reclaim_orphaned_running() -> None:
+    from mastisk.db.queries import connect
+    with connect() as conn:
+        cur = conn.execute(
+            "UPDATE jobs SET status='queued', started_at=NULL WHERE status='running'"
+        )
+        if cur.rowcount:
+            log.info("reclaimed %s orphaned running job(s)", cur.rowcount)

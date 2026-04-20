@@ -8,10 +8,11 @@ interface Props {
 }
 
 const JUMPS: { id: View; l: string; d: string }[] = [
-  { id: 'digest', l: 'Daily Digest',   d: 'Today' },
-  { id: 'queue',  l: 'Reading queue',  d: 'Jobs & ingest' },
-  { id: 'graph',  l: 'Graph view',     d: 'Browse the wiki' },
-  { id: 'agents', l: 'Agents',         d: 'Live activity' },
+  { id: 'digest',   l: 'Daily Digest',   d: 'Today' },
+  { id: 'queue',    l: 'Reading queue',  d: 'Jobs & ingest' },
+  { id: 'graph',    l: 'Graph view',     d: 'Browse the wiki' },
+  { id: 'agents',   l: 'Agents',         d: 'Live activity' },
+  { id: 'settings', l: 'Settings',       d: 'Models & keys' },
 ];
 
 export function SystemRail({ feed, agents, onNavigate }: Props) {
