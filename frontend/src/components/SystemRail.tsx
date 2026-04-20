@@ -1,0 +1,53 @@
+import type { AgentInfo, FeedTick, View } from '../types';
+
+interface Props {
+  view: View;
+  feed: FeedTick[];
+  agents: AgentInfo[];
+  onNavigate: (view: View, id?: string) => void;
+}
+
+const JUMPS = [
+  { id: 'digest',  l: 'Daily Digest',     d: 'Today' },
+  { id: 'article', l: 'Test-time compute', d: 'Concept · hot this week', articleId: 'ttc' },
+  { id: 'graph',   l: 'Graph view',        d: '522 pages' },
+  { id: 'agents',  l: 'Agents',            d: '5 active' },
+];
+
+export function SystemRail({ feed, agents, onNavigate }: Props) {
+  return (
+    <aside className="rail">
+      <div className="rail-section">
+        <div className="rail-h">Jump to</div>
+        {JUMPS.map((j) => (
+          <div key={j.id} className="rel-row"
+            onClick={() => onNavigate(j.id === 'article' ? 'article' : (j.id as View), j.articleId)}
+            style={{flexDirection:'column',alignItems:'flex-start',gap:2}}
+          >
+            <div style={{color:'var(--fg)',fontSize:13}}>{j.l}</div>
+            <div style={{fontFamily:'var(--mono)',fontSize:10,color:'var(--fg-faint)'}}>{j.d}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="rail-section">
+        <div className="rail-h">Live feed
+          <span style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:9,color:'var(--accent)'}}>
+            <span style={{width:5,height:5,borderRadius:'50%',background:'var(--accent)',animation:'pulse 1.6s infinite'}}/>
+            LIVE
+          </span>
+        </div>
+        {feed.slice(0, 8).map((f, i) => (
+          <div key={i} className="tick-row">
+            <div className="tick-time">{f.t}</div>
+            <div className="tick-body">
+              <span className={`tick-agent ${agents.find((a) => a.id === f.agent)?.color || ''}`}>{f.agent}</span>
+              <span className="tick-verb"> {f.verb}</span>{' '}
+              <span className="tick-obj">{f.obj}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </aside>
+  );
+}

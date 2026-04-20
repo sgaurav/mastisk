@@ -1,0 +1,92 @@
+"""FastAPI application factory."""
+from __future__ import annotations
+
+import asyncio
+import logging
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+
+from mastisk.paths import pwa_dir
+from mastisk.routes import articles, ask, digest_route, feed_route, search, signals_route, sources_route, vault_route
+
+log = logging.getLogger("mastisk.app")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Start background scheduler lazily on first tick to avoid partial state on startup errors
+    log.info("mastisk starting")
+    try:
+        from mastisk.scheduler import start_scheduler, stop_scheduler
+        scheduler_handle = await start_scheduler()
+    except Exception as e:
+        log.warning("scheduler failed to start: %s", e)
+        scheduler_handle = None
+    try:
+        yield
+    finally:
+        if scheduler_handle:
+            await stop_scheduler(scheduler_handle)
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(
+        title="Mastisk",
+        version="0.1.0",
+        lifespan=lifespan,
+        docs_url="/api/docs",
+        openapi_url="/api/openapi.json",
+    )
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # single-user, private via Tailscale — wide-open is fine
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    app.include_router(articles.router, prefix="/api")
+    app.include_router(digest_route.router, prefix="/api")
+    app.include_router(feed_route.router, prefix="/api")
+    app.include_router(ask.router, prefix="/api")
+    app.include_router(search.router, prefix="/api")
+    app.include_router(signals_route.router, prefix="/api")
+    app.include_router(sources_route.router, prefix="/api")
+    app.include_router(vault_route.router, prefix="/api")
+
+    @app.get("/api/health")
+    def health():
+        return {"ok": True}
+
+    # Static frontend — the wheel ships the built PWA under src/mastisk/pwa/
+    pwa = pwa_dir()
+    if (pwa / "index.html").exists():
+        app.mount(
+            "/assets",
+            StaticFiles(directory=str(pwa / "assets")),
+            name="assets",
+        )
+
+        # SPA catch-all: serve index.html for any non-API route so client routing works
+        @app.get("/{full_path:path}")
+        async def spa(full_path: str, request: Request):
+            if full_path.startswith("api"):
+                return JSONResponse({"detail": "Not Found"}, status_code=404)
+            candidate = pwa / full_path
+            if candidate.is_file():
+                return FileResponse(candidate)
+            return FileResponse(pwa / "index.html")
+    else:
+        @app.get("/")
+        async def stub():
+            return JSONResponse({
+                "message": "Frontend not built. Run `cd frontend && npm install && npm run build`.",
+                "api_docs": "/api/docs",
+            })
+
+    return app

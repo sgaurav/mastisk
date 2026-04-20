@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+
+# Node / frontend
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# Built frontend (copied into the wheel by the prebuild hook, regenerable)
+src/mastisk/pwa/*
+!src/mastisk/pwa/.gitkeep
+
+# Local runtime data (data actually lives in ~/Library/… or iCloud; never commit)
+data/
+vault/
+
+# Secrets + local config
+.env
+.env.local
+*.key
+*.pem
+id_rsa*
+.credentials
+.secrets
+secrets.*
+config.toml
+
+# Databases
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Backups
+mastisk-backup-*.tar.gz
+*.tar.gz
+
+# Per-user Claude Code settings (the project file .claude/settings.json CAN be
+# committed; the local override should not)
+.claude/settings.local.json
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.cursor/
