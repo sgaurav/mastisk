@@ -1,9 +1,11 @@
 import type { AgentInfo, FeedTick, View } from '../types';
+import { CalendarPicker } from './CalendarPicker';
 
 interface Props {
   view: View;
   feed: FeedTick[];
   agents: AgentInfo[];
+  selectedDate: string | null;
   onNavigate: (view: View, id?: string) => void;
 }
 
@@ -16,9 +18,17 @@ const JUMPS: { id: View; l: string; d: string }[] = [
   { id: 'settings',       l: 'Settings',       d: 'Models & keys' },
 ];
 
-export function SystemRail({ feed, agents, onNavigate }: Props) {
+export function SystemRail({ feed, agents, selectedDate, onNavigate }: Props) {
   return (
     <aside className="rail">
+      <div className="rail-section">
+        <div className="rail-h">Calendar</div>
+        <CalendarPicker
+          selectedDate={selectedDate}
+          onSelect={(iso) => onNavigate('digest', iso)}
+        />
+      </div>
+
       <div className="rail-section">
         <div className="rail-h">Jump to</div>
         {JUMPS.map((j) => (

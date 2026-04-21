@@ -89,6 +89,9 @@ export const api = {
   digest: (date?: string) =>
     j<Digest>(date ? `${BASE}/digest?date=${encodeURIComponent(date)}` : `${BASE}/digest`),
 
+  digestCalendar: (year: number, month: number) =>
+    j<{ active_dates: string[] }>(`${BASE}/digest/calendar?year=${year}&month=${month}`),
+
   openQuestions: () => j<OpenQuestionsResponse>(`${BASE}/open-questions`),
 
   feed: () => j<{ feed: FeedTick[]; agents: AgentInfo[] }>(`${BASE}/feed`),

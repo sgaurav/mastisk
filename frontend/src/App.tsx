@@ -155,7 +155,13 @@ export function App() {
         <RightRail article={article} feed={mergedFeed} agents={agents} onAsk={openAsk} onNavigate={navigate}/>
       )}
       {railOpen && view !== 'article' && (
-        <SystemRail view={view} feed={mergedFeed} agents={agents} onNavigate={navigate}/>
+        <SystemRail
+          view={view}
+          feed={mergedFeed}
+          agents={agents}
+          selectedDate={digest?.iso_date ?? null}
+          onNavigate={navigate}
+        />
       )}
 
       <AskDrawer open={askOpen} ctx={askCtx} onClose={() => setAskOpen(false)}/>

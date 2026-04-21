@@ -1,6 +1,7 @@
 """Daily digest — what the agents did recently."""
 from __future__ import annotations
 
+import calendar as _calendar
 from datetime import date as _date, datetime
 
 from fastapi import APIRouter, HTTPException
@@ -123,3 +124,22 @@ def digest(date: str | None = None):
             "threads": threads,
             "queue": queue,
         }
+
+
+@router.get("/digest/calendar")
+def digest_calendar(year: int, month: int):
+    """Dates within (year, month) where articles were touched — drives the rail calendar."""
+    if not 1 <= month <= 12:
+        raise HTTPException(status_code=400, detail=f"invalid month: {month}")
+    if not 1900 <= year <= 2999:
+        raise HTTPException(status_code=400, detail=f"invalid year: {year}")
+    first = _date(year, month, 1).isoformat()
+    last = _date(year, month, _calendar.monthrange(year, month)[1]).isoformat()
+    with connect() as conn:
+        rows = conn.execute(
+            """SELECT DISTINCT DATE(updated_at) AS d FROM articles
+               WHERE body_md != '' AND DATE(updated_at) BETWEEN ? AND ?
+               ORDER BY d ASC""",
+            (first, last),
+        ).fetchall()
+    return {"active_dates": [r["d"] for r in rows]}
