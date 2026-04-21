@@ -116,6 +116,12 @@ class Compiler(Agent):
                            payload={"source_id": source_id, "reason": data.get("skip_reason")})
             return
 
+        # Guard against mis-classification: a single-source article is almost
+        # never a genuine Synthesis — that kind is reserved for cross-source
+        # weaving. Demote to Concept so the UI counts stay meaningful.
+        if data.get("kind") == "Synthesis":
+            data["kind"] = "Concept"
+
         self._persist_article(data, source_id=source_id)
         self.emit_feed(
             verb="wrote" if self._is_new(data["id"]) else "updated",

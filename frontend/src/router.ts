@@ -4,11 +4,13 @@ import type { View } from './types';
 export interface Route {
   view: View;
   articleId: string | null;
+  date: string | null;
 }
 
 const VIEW_PATHS: Record<string, View> = {
   '': 'digest',
   '/': 'digest',
+  '/digest': 'digest',
   '/queue': 'queue',
   '/feed': 'feed',
   '/agents': 'agents',
@@ -17,6 +19,7 @@ const VIEW_PATHS: Record<string, View> = {
   '/health': 'lint',
   '/lint': 'lint',
   '/mobile': 'mobile',
+  '/open-questions': 'open_questions',
   '/settings': 'settings',
 };
 
@@ -30,21 +33,33 @@ const PATH_FOR_VIEW: Record<View, string> = {
   ingest: '/ingest',
   lint: '/health',
   mobile: '/mobile',
+  open_questions: '/open-questions',
   settings: '/settings',
 };
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export function parseRoute(pathname: string): Route {
   if (pathname.startsWith('/a/')) {
     const raw = pathname.slice(3).split('/')[0];
-    if (raw) return { view: 'article', articleId: decodeURIComponent(raw) };
+    if (raw) return { view: 'article', articleId: decodeURIComponent(raw), date: null };
+  }
+  if (pathname.startsWith('/digest/')) {
+    const raw = pathname.slice('/digest/'.length).split('/')[0];
+    if (raw && ISO_DATE.test(raw)) {
+      return { view: 'digest', articleId: null, date: raw };
+    }
+    // Malformed date — fall through to today's digest.
+    return { view: 'digest', articleId: null, date: null };
   }
   const view = VIEW_PATHS[pathname];
-  if (view) return { view, articleId: null };
-  return { view: 'digest', articleId: null };
+  if (view) return { view, articleId: null, date: null };
+  return { view: 'digest', articleId: null, date: null };
 }
 
-export function routeToPath(view: View, articleId?: string | null): string {
-  if (view === 'article' && articleId) return `/a/${encodeURIComponent(articleId)}`;
+export function routeToPath(view: View, arg?: string | null): string {
+  if (view === 'article' && arg) return `/a/${encodeURIComponent(arg)}`;
+  if (view === 'digest' && arg && ISO_DATE.test(arg)) return `/digest/${arg}`;
   return PATH_FOR_VIEW[view] ?? '/';
 }
 
@@ -57,18 +72,24 @@ export function useRoute() {
     return () => window.removeEventListener('popstate', onPop);
   }, []);
 
-  const navigate = useCallback((view: View, articleId?: string) => {
-    const path = routeToPath(view, articleId);
+  const navigate = useCallback((view: View, arg?: string) => {
+    const path = routeToPath(view, arg);
     if (path !== window.location.pathname + window.location.search) {
       window.history.pushState(null, '', path);
     }
-    setRoute({ view, articleId: articleId ?? null });
+    const next: Route = { view, articleId: null, date: null };
+    if (view === 'article' && arg) next.articleId = arg;
+    else if (view === 'digest' && arg && ISO_DATE.test(arg)) next.date = arg;
+    setRoute(next);
   }, []);
 
-  const replace = useCallback((view: View, articleId?: string) => {
-    const path = routeToPath(view, articleId);
+  const replace = useCallback((view: View, arg?: string) => {
+    const path = routeToPath(view, arg);
     window.history.replaceState(null, '', path);
-    setRoute({ view, articleId: articleId ?? null });
+    const next: Route = { view, articleId: null, date: null };
+    if (view === 'article' && arg) next.articleId = arg;
+    else if (view === 'digest' && arg && ISO_DATE.test(arg)) next.date = arg;
+    setRoute(next);
   }, []);
 
   return { route, navigate, replace };

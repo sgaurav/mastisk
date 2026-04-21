@@ -8,12 +8,27 @@ interface Props {
 
 export function DigestView({ digest, onNavigate, onAsk }: Props) {
   const empty = digest.counters.every((c) => c.value === 0);
-  if (empty && digest.threads.length === 0) {
+  const hasNav = digest.prev_date || digest.next_date;
+
+  // Completely empty wiki (no prev/next to jump to either) → show the onboarding splash.
+  if (empty && digest.threads.length === 0 && !hasNav) {
     return <EmptyDigest onAsk={onAsk} />;
   }
+
+  // Non-today date with zero activity, but we have neighbours to jump to.
+  if (empty && digest.threads.length === 0) {
+    return (
+      <div className="view">
+        <DigestNav digest={digest} onNavigate={onNavigate}/>
+        <h1 className="view-title">No agent activity on {digest.iso_date}.</h1>
+        <p className="view-sub">{digest.summary}</p>
+      </div>
+    );
+  }
+
   return (
     <div className="view">
-      <div className="view-h">{digest.date} · Daily Digest</div>
+      <DigestNav digest={digest} onNavigate={onNavigate}/>
       <h1 className="view-title">What your agents read while you slept.</h1>
       <p className="view-sub">{digest.summary}</p>
 
@@ -51,6 +66,48 @@ export function DigestView({ digest, onNavigate, onAsk }: Props) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function DigestNav({ digest, onNavigate }: { digest: Digest; onNavigate: Props['onNavigate'] }) {
+  const go = (d: string | null) => { if (d) onNavigate('digest', d); };
+  const btn = (disabled: boolean): React.CSSProperties => ({
+    background: 'none',
+    border: 'none',
+    cursor: disabled ? 'default' : 'pointer',
+    color: disabled ? 'var(--fg-faint)' : 'var(--fg-mute)',
+    fontFamily: 'var(--mono)',
+    fontSize: 11,
+    padding: '0 6px',
+    opacity: disabled ? 0.4 : 1,
+  });
+  return (
+    <div
+      className="view-h"
+      style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}
+    >
+      <button
+        type="button"
+        aria-label="Previous day"
+        style={btn(!digest.prev_date)}
+        disabled={!digest.prev_date}
+        onClick={() => go(digest.prev_date)}
+        title={digest.prev_date ?? 'No earlier activity'}
+      >
+        ←{digest.prev_date ? ` ${digest.prev_date}` : ''}
+      </button>
+      <span>{digest.date} · Daily Digest</span>
+      <button
+        type="button"
+        aria-label="Next day"
+        style={btn(!digest.next_date)}
+        disabled={!digest.next_date}
+        onClick={() => go(digest.next_date)}
+        title={digest.next_date ?? 'No later activity'}
+      >
+        {digest.next_date ? `${digest.next_date} ` : ''}→
+      </button>
     </div>
   );
 }

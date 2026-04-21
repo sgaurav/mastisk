@@ -17,6 +17,12 @@ async def start_scheduler():
     # ignores them (only picks `queued`), so they'd be stuck forever.
     _reclaim_orphaned_running()
 
+    # One-shot graph repair on boot: reconnects links the Compiler dropped
+    # because sibling articles didn't exist yet. This closes the gap between
+    # "articles written before this pass existed" and the first Linter tick
+    # (which is ~30s after boot). Pure SQL; no network.
+    _graph_repair_once()
+
     # APScheduler's "interval" trigger fires *after* one interval; passing
     # next_run_time forces the first tick a few seconds after startup so
     # queued jobs drain immediately instead of waiting tick_seconds.
@@ -73,3 +79,18 @@ def _reclaim_orphaned_running() -> None:
         )
         if cur.rowcount:
             log.info("reclaimed %s orphaned running job(s)", cur.rowcount)
+
+
+def _graph_repair_once() -> None:
+    """Run Linter's graph-repair pass once on scheduler startup. Reconnects
+    any ``<span class="link" data-target>`` references whose target existed
+    but wasn't in the ``links`` table (e.g. articles written by the Compiler
+    before the repair pass existed). Logs the count; no feed row is emitted.
+    """
+    try:
+        from mastisk.agents.linter import Linter
+        n = Linter.repair_graph()
+        if n:
+            log.info("boot graph-repair: inserted %s link(s)", n)
+    except Exception as e:
+        log.warning("boot graph-repair skipped: %s", e)

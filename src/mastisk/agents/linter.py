@@ -24,6 +24,7 @@ import re
 
 from mastisk.agents.base import Agent
 from mastisk.bridges import ollama_bridge
+from mastisk.db import queries as q
 from mastisk.db.queries import connect
 
 log = logging.getLogger("mastisk.linter")
@@ -53,6 +54,10 @@ class Linter(Agent):
                 log.exception("linter: job %s failed", job["id"])
                 self._mark_failed(job["id"], str(e))
 
+        # Graph-repair runs before the structural scan so the scan's orphan
+        # check sees an up-to-date links table (otherwise articles that just
+        # got reconnected would still be "flagged orphan" for one tick).
+        self._graph_repair()
         await self._scan()
 
     async def _handle(self, job: dict) -> None:
@@ -78,8 +83,15 @@ class Linter(Agent):
                 r["id"] for r in conn.execute("SELECT id FROM articles")
             }
 
-        findings = []
-        reconnected = 0
+        # Findings collected this tick. Each carries its (kind, article_id,
+        # target) tuple plus a display title; we dedup via record_finding and
+        # only emit a feed row when the finding is newly seen.
+        findings: list[dict] = []
+        # (article_id, set_of_dangling_targets_seen_this_tick). Used after the
+        # loop to clear any *previously* open 'dangling' findings whose target
+        # either no longer appears or has since resolved.
+        dangling_by_article: dict[str, set[str]] = {}
+        articles_scanned: list[dict] = []
 
         for row in articles:
             body = row["body_md"] or ""
@@ -91,57 +103,144 @@ class Linter(Agent):
                     )
                 ]
 
+            articles_scanned.append({"id": row["id"], "title": row["title"]})
             dangling = self._dangling_targets(sections, known_ids, self_id=row["id"])
-            if dangling:
-                findings.append({"kind": "dangling", "article_id": row["id"],
-                                 "title": row["title"], "targets": dangling})
-
-            # Reconnect unresolved related links: for every link target referenced
-            # in the body that exists as an article, make sure a row exists in
-            # the `links` table. The Compiler originally dropped these when the
-            # sibling hadn't been written yet.
-            resolved = self._resolvable_in_body(sections, known_ids, self_id=row["id"])
-            if resolved:
-                with connect() as conn:
-                    before = conn.execute(
-                        "SELECT COUNT(*) AS n FROM links WHERE from_article = ?",
-                        (row["id"],),
-                    ).fetchone()["n"]
-                    for target in resolved:
-                        conn.execute(
-                            """INSERT OR IGNORE INTO links
-                               (from_article, to_article, weight, snippet)
-                               VALUES (?, ?, 0.5, ?)""",
-                            (row["id"], target, "[linter] resolved from body"),
-                        )
-                    after = conn.execute(
-                        "SELECT COUNT(*) AS n FROM links WHERE from_article = ?",
-                        (row["id"],),
-                    ).fetchone()["n"]
-                    reconnected += max(0, after - before)
+            dangling_by_article[row["id"]] = set(dangling)
+            for t in dangling:
+                findings.append({
+                    "kind": "dangling", "article_id": row["id"],
+                    "title": row["title"], "target": t,
+                })
 
             if self._is_empty(sections, body):
-                findings.append({"kind": "empty", "article_id": row["id"], "title": row["title"]})
+                findings.append({
+                    "kind": "empty", "article_id": row["id"],
+                    "title": row["title"], "target": None,
+                })
 
         orphans = self._orphans() if article_id is None else []
+        orphan_ids = {o["id"] for o in orphans}
         for o in orphans:
-            findings.append({"kind": "orphan", "article_id": o["id"], "title": o["title"]})
+            findings.append({
+                "kind": "orphan", "article_id": o["id"],
+                "title": o["title"], "target": None,
+            })
 
-        # Emit structural findings.
-        for f in findings:
+        # Emit structural findings only when first seen. Bump last_seen
+        # silently otherwise. Also clear stale dangling findings whose
+        # target is no longer in the article body (target may have been
+        # created since, or the link was edited away).
+        new_findings: list[dict] = []
+        with connect() as conn:
+            for f in findings:
+                is_new = q.record_finding(
+                    conn,
+                    kind=f["kind"],
+                    article_id=f["article_id"],
+                    target=f.get("target"),
+                )
+                if is_new:
+                    new_findings.append(f)
+
+            # For every article we scanned, close any stale 'dangling' rows
+            # whose target is no longer in the current set of dangling
+            # targets (either resolved or removed).
+            for scanned in articles_scanned:
+                q.resolve_findings_for_article(
+                    conn,
+                    kind="dangling",
+                    article_id=scanned["id"],
+                    keep_targets=dangling_by_article.get(scanned["id"], set()),
+                )
+
+            # Full-scan orphan housekeeping: if we scanned every article
+            # this tick, articles NOT in the orphan list are no longer
+            # orphans — resolve their open 'orphan' finding if one exists.
+            if article_id is None:
+                open_orphan_rows = conn.execute(
+                    """SELECT hash, article_id FROM lint_findings
+                       WHERE kind = 'orphan' AND resolved_at IS NULL"""
+                ).fetchall()
+                for r in open_orphan_rows:
+                    if r["article_id"] not in orphan_ids:
+                        q.resolve_finding(conn, hash=r["hash"])
+
+        for f in new_findings:
             obj = (f.get("title") or f["article_id"])[:80]
-            self.emit_feed(verb="flagged", obj=obj, kind=f["kind"], payload=f)
+            payload = {k: f[k] for k in ("kind", "article_id", "title", "target") if f.get(k) is not None}
+            self.emit_feed(verb="flagged", obj=obj, kind=f["kind"], payload=payload)
 
-        if reconnected:
-            self.emit_feed(
-                verb="cleaned", obj=f"{reconnected} links reconnected",
-                kind="reconnect", touched=reconnected, payload={"count": reconnected},
-            )
-
-        # Best-effort advisory LLM pass on a handful of flagged items.
-        advisories = [f for f in findings if f["kind"] in ("empty", "orphan")][: self.max_llm_suggestions]
+        # Best-effort advisory LLM pass on a handful of newly-flagged items.
+        advisories = [f for f in new_findings if f["kind"] in ("empty", "orphan")][: self.max_llm_suggestions]
         if advisories:
             await self._llm_advise(advisories)
+
+    # ───── graph repair ─────
+
+    def _graph_repair(self) -> int:
+        """Ensure every resolvable ``data-target="slug"`` reference has a row
+        in ``links``. Emits one ``verb="repaired"`` feed row per tick summarizing
+        the count, but only if N > 0.
+
+        This runs every Linter tick AND once on scheduler startup to close the
+        gap between "Compiler wrote articles before this pass existed" and the
+        first Linter tick.
+
+        Returns the number of new link rows inserted.
+        """
+        reconnected = self._repair_graph_once()
+        if reconnected:
+            self.emit_feed(
+                verb="repaired",
+                obj=f"{reconnected} links reconnected",
+                kind="reconnect",
+                touched=reconnected,
+                payload={"count": reconnected},
+            )
+        return reconnected
+
+    @staticmethod
+    def _repair_graph_once() -> int:
+        """Pure SQL pass: walk all article sections, extract data-target slugs,
+        insert a links row for every pair where the target exists. Returns the
+        count of *newly* inserted rows (not the total count of resolvable refs).
+        """
+        inserted = 0
+        with connect() as conn:
+            known_ids = {r["id"] for r in conn.execute("SELECT id FROM articles")}
+            article_ids = list(known_ids)
+
+            for aid in article_ids:
+                sections = conn.execute(
+                    "SELECT body FROM article_sections WHERE article_id = ?",
+                    (aid,),
+                ).fetchall()
+                # Collect every referenced, existing target in this article.
+                targets: set[str] = set()
+                for s in sections:
+                    for m in LINK_RE.finditer(s["body"] or ""):
+                        t = m.group(1)
+                        if t and t != aid and t in known_ids:
+                            targets.add(t)
+                for t in targets:
+                    cur = conn.execute(
+                        """INSERT OR IGNORE INTO links
+                           (from_article, to_article, weight, snippet)
+                           VALUES (?, ?, 0.5, ?)""",
+                        (aid, t, "[linter] graph repair"),
+                    )
+                    # sqlite3 rowcount is 1 on insert, 0 when IGNORE blocks.
+                    if cur.rowcount and cur.rowcount > 0:
+                        inserted += cur.rowcount
+        return inserted
+
+    @classmethod
+    def repair_graph(cls) -> int:
+        """Public classmethod for callers outside a running Linter instance
+        (e.g. scheduler startup). Runs the repair pass without emitting a feed
+        row — the scheduler logs the count instead.
+        """
+        return cls._repair_graph_once()
 
     # ───── pure checks ─────
 

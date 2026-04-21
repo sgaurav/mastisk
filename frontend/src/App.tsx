@@ -16,6 +16,7 @@ import { AgentsView } from './components/AgentsView';
 import { GraphView } from './components/GraphView';
 import { AskDrawer } from './components/AskDrawer';
 import { IngestView } from './components/IngestView';
+import { OpenQuestionsView } from './components/OpenQuestionsView';
 import { QueueView } from './components/QueueView';
 import { SettingsView } from './components/SettingsView';
 import { SystemCheckView } from './components/SystemCheckView';
@@ -26,7 +27,7 @@ export function App() {
   );
 
   const { route, navigate: routeNavigate, replace } = useRoute();
-  const { view, articleId: currentArticle } = route;
+  const { view, articleId: currentArticle, date: currentDate } = route;
 
   const [sideOpen, setSideOpen] = useState(window.innerWidth > 900);
   const [railOpen, setRailOpen] = useState(window.innerWidth > 900);
@@ -50,8 +51,13 @@ export function App() {
   useEffect(() => {
     void api.sidebar().then(setSidebar).catch(console.error);
     void api.feed().then((d) => { setFeed(d.feed); setAgents(d.agents); }).catch(console.error);
-    void api.digest().then(setDigest).catch(console.error);
   }, []);
+
+  // Re-fetch the digest whenever the requested date changes (null = today).
+  useEffect(() => {
+    setDigest(null);
+    void api.digest(currentDate ?? undefined).then(setDigest).catch(console.error);
+  }, [currentDate]);
 
   // Refresh sidebar counts + digest whenever agents emit a new tick, so the
   // "Concepts 1 → 2" counter updates as articles are compiled without a reload.
@@ -60,15 +66,15 @@ export function App() {
   useEffect(() => {
     if (!tickKey) return;
     void api.sidebar().then(setSidebar).catch(() => {});
-    void api.digest().then(setDigest).catch(() => {});
-  }, [tickKey]);
+    void api.digest(currentDate ?? undefined).then(setDigest).catch(() => {});
+  }, [tickKey, currentDate]);
   useEffect(() => {
     const id = setInterval(() => {
       void api.sidebar().then(setSidebar).catch(() => {});
-      void api.digest().then(setDigest).catch(() => {});
+      void api.digest(currentDate ?? undefined).then(setDigest).catch(() => {});
     }, 30000);
     return () => clearInterval(id);
-  }, []);
+  }, [currentDate]);
 
   // Load the article whenever the route points at one. On 404, bounce to the
   // digest so a dead deep-link doesn't leave the user staring at "loading…".
@@ -128,6 +134,7 @@ export function App() {
         {(view === 'feed' || view === 'agents') && <AgentsView agents={agents} feed={mergedFeed}/>}
         {view === 'graph' && <GraphView onNavigate={navigate}/>}
         {view === 'ingest' && <IngestView/>}
+        {view === 'open_questions' && <OpenQuestionsView onNavigate={navigate}/>}
         {view === 'queue' && <QueueView/>}
         {view === 'lint' && <SystemCheckView/>}
         {view === 'settings' && <SettingsView/>}

@@ -201,12 +201,16 @@ def vault_tree(conn: sqlite3.Connection) -> list[dict]:
         "SELECT COUNT(*) AS n FROM articles WHERE DATE(updated_at) = DATE('now')"
     ).fetchone()["n"]
     queue_n = conn.execute("SELECT COUNT(*) AS n FROM jobs WHERE status='queued'").fetchone()["n"]
+    open_q_n = conn.execute(
+        "SELECT COUNT(*) AS n FROM article_sections WHERE kind='open'"
+    ).fetchone()["n"]
     any_feed = conn.execute("SELECT 1 FROM feed LIMIT 1").fetchone() is not None
 
     return [
         {"kind": "section", "label": "Today"},
         {"kind": "page", "id": "digest", "label": "Daily Digest", "glyph": "◐", "badge": badge_if_nonzero(digest_n)},
         {"kind": "page", "id": "queue", "label": "Reading queue", "glyph": "≡", "badge": badge_if_nonzero(queue_n)},
+        {"kind": "page", "id": "open_questions", "label": "Open questions", "glyph": "?", "badge": badge_if_nonzero(open_q_n)},
         {"kind": "page", "id": "feed", "label": "Agent feed", "glyph": "◇", "badge": "live" if any_feed else None},
         {"kind": "section", "label": "Wiki"},
         folder("Concepts", "Concept", "▲", hot_ids=hot),
@@ -309,6 +313,117 @@ def add_signal(
         "INSERT INTO signals (article_id, kind, value_json) VALUES (?, ?, ?)",
         (article_id, kind, json.dumps(value) if value else None),
     )
+
+
+# ─────────────────────────────── Linter findings ───────────────────────────────
+
+def _finding_hash(*, kind: str, article_id: str | None, target: str | None) -> str:
+    import hashlib
+    key = f"{kind}|{article_id or ''}|{target or ''}"
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
+
+
+def record_finding(
+    conn: sqlite3.Connection,
+    *,
+    kind: str,
+    article_id: str | None,
+    target: str | None = None,
+) -> bool:
+    """Upsert a Linter finding; return True iff this is the first time we've
+    seen this (kind, article_id, target) tuple in an unresolved state.
+
+    On a subsequent tick where the condition still holds, we bump ``last_seen``
+    and return False so the caller can skip emitting another feed row.
+
+    If a matching row was previously resolved (``resolved_at IS NOT NULL``),
+    we treat reappearance as a fresh finding: clear ``resolved_at``, refresh
+    ``first_seen`` and ``last_seen``, and return True so it emits again.
+    """
+    h = _finding_hash(kind=kind, article_id=article_id, target=target)
+    existing = conn.execute(
+        "SELECT hash, resolved_at FROM lint_findings WHERE hash = ?", (h,)
+    ).fetchone()
+    if existing is None:
+        conn.execute(
+            """INSERT INTO lint_findings (hash, kind, article_id, target)
+               VALUES (?, ?, ?, ?)""",
+            (h, kind, article_id, target),
+        )
+        return True
+    if existing["resolved_at"] is not None:
+        # Previously resolved, now reappearing — treat as new.
+        conn.execute(
+            """UPDATE lint_findings
+               SET resolved_at = NULL,
+                   first_seen = CURRENT_TIMESTAMP,
+                   last_seen = CURRENT_TIMESTAMP
+               WHERE hash = ?""",
+            (h,),
+        )
+        return True
+    # Still open: just bump last_seen.
+    conn.execute(
+        "UPDATE lint_findings SET last_seen = CURRENT_TIMESTAMP WHERE hash = ?",
+        (h,),
+    )
+    return False
+
+
+def resolve_finding(
+    conn: sqlite3.Connection,
+    *,
+    kind: str | None = None,
+    article_id: str | None = None,
+    target: str | None = None,
+    hash: str | None = None,
+) -> int:
+    """Mark a finding as resolved.
+
+    Either pass ``hash`` directly, or the (kind, article_id, target) tuple
+    and we'll derive it. Returns rowcount (0 if nothing matched or already
+    resolved).
+    """
+    if hash is None:
+        if kind is None:
+            return 0
+        hash = _finding_hash(kind=kind, article_id=article_id, target=target)
+    cur = conn.execute(
+        """UPDATE lint_findings
+           SET resolved_at = CURRENT_TIMESTAMP
+           WHERE hash = ? AND resolved_at IS NULL""",
+        (hash,),
+    )
+    return cur.rowcount or 0
+
+
+def resolve_findings_for_article(
+    conn: sqlite3.Connection,
+    *,
+    kind: str,
+    article_id: str,
+    keep_targets: set[str] | None = None,
+) -> int:
+    """Resolve open findings of ``kind`` for ``article_id`` whose ``target`` is
+    NOT in ``keep_targets``. Used to clear stale 'dangling' findings once a
+    target either resolves or stops being referenced.
+    """
+    keep = keep_targets or set()
+    rows = conn.execute(
+        """SELECT hash, target FROM lint_findings
+           WHERE kind = ? AND article_id = ? AND resolved_at IS NULL""",
+        (kind, article_id),
+    ).fetchall()
+    n = 0
+    for r in rows:
+        if r["target"] in keep:
+            continue
+        conn.execute(
+            "UPDATE lint_findings SET resolved_at = CURRENT_TIMESTAMP WHERE hash = ?",
+            (r["hash"],),
+        )
+        n += 1
+    return n
 
 
 def pin_article(conn: sqlite3.Connection, article_id: str) -> None:

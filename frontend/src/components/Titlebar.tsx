@@ -9,6 +9,7 @@ const CRUMB: Record<string, readonly string[]> = {
   graph:   ['System', 'Graph view'],
   mobile:  ['System', 'Mobile companion'],
   queue:   ['Today',  'Reading queue'],
+  open_questions: ['Today', 'Open questions'],
   ingest:  ['System', 'Sources & ingest'],
   lint:    ['System', 'Health check'],
   settings:['System', 'Settings'],

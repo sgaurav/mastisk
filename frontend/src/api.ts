@@ -1,6 +1,7 @@
 import type {
   Article, AskResponse, Digest, Feed, FeedTick, AgentInfo,
-  GraphData, Job, PinnedItem, SettingsBundle, SettingsPatch, UserInfo, VaultItem,
+  GraphData, Job, OpenQuestionsResponse, PinnedItem, SettingsBundle,
+  SettingsPatch, UserInfo, VaultItem,
 } from './types';
 
 const BASE = '/api';
@@ -53,7 +54,10 @@ export const api = {
 
   article: (id: string) => j<Article>(`${BASE}/articles/${id}`),
 
-  digest: () => j<Digest>(`${BASE}/digest`),
+  digest: (date?: string) =>
+    j<Digest>(date ? `${BASE}/digest?date=${encodeURIComponent(date)}` : `${BASE}/digest`),
+
+  openQuestions: () => j<OpenQuestionsResponse>(`${BASE}/open-questions`),
 
   feed: () => j<{ feed: FeedTick[]; agents: AgentInfo[] }>(`${BASE}/feed`),
 

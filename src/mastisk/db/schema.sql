@@ -135,6 +135,22 @@ CREATE TABLE IF NOT EXISTS agent_runs (
   error TEXT
 );
 
+-- Linter finding dedup: each structural finding gets a stable hash so the
+-- Linter only emits a feed row the first time it sees a condition. Bumping
+-- last_seen on subsequent hits lets us age out stale findings without feed
+-- spam. resolved_at is set when the condition clears (e.g. an orphan gets
+-- a backlink) so we can re-flag if it reappears.
+CREATE TABLE IF NOT EXISTS lint_findings (
+  hash TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,              -- 'orphan' | 'empty' | 'dangling' | etc.
+  article_id TEXT,
+  target TEXT,                     -- for 'dangling', the missing target slug
+  first_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
+  last_seen  DATETIME DEFAULT CURRENT_TIMESTAMP,
+  resolved_at DATETIME
+);
+CREATE INDEX IF NOT EXISTS idx_lint_findings_open ON lint_findings(kind) WHERE resolved_at IS NULL;
+
 -- Triggers: keep external-content FTS in sync
 CREATE TRIGGER IF NOT EXISTS articles_ai AFTER INSERT ON articles BEGIN
   INSERT INTO articles_fts(rowid, title, summary, body_md)

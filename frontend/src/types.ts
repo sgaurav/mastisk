@@ -155,10 +155,26 @@ export interface DigestThread {
 
 export interface Digest {
   date: string;
+  iso_date: string;
+  prev_date: string | null;
+  next_date: string | null;
   summary: string;
   counters: { label: string; value: number }[];
   threads: DigestThread[];
   queue: string[];
+}
+
+export interface OpenQuestion {
+  article_id: string;
+  article_title: string;
+  article_kind: ArticleKind;
+  heading: string;
+  body: string;
+  updated_at: string;
+}
+
+export interface OpenQuestionsResponse {
+  questions: OpenQuestion[];
 }
 
 export interface AskResponse {
@@ -169,7 +185,8 @@ export interface AskResponse {
 
 export type View =
   | 'article' | 'digest' | 'feed' | 'agents'
-  | 'graph' | 'mobile' | 'queue' | 'ingest' | 'lint' | 'settings';
+  | 'graph' | 'mobile' | 'queue' | 'ingest' | 'lint' | 'settings'
+  | 'open_questions';
 
 export interface BudgetValues {
   scout: number;
