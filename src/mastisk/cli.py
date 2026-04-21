@@ -498,6 +498,37 @@ def add_youtube(url: str):
     console.print(f"[green]queued[/green] job {job_id}  (Listener will pick it up on next tick)")
 
 
+@app.command(name="add-podcast")
+def add_podcast(url: str):
+    """Queue a podcast URL (RSS feed, Apple Podcasts, or direct audio) for the Listener agent."""
+    import asyncio
+    from mastisk.agents.base import enqueue
+    from mastisk.integrations import podcasts
+
+    _ensure_db()
+    try:
+        cls = asyncio.run(podcasts.classify(url))
+    except Exception as e:
+        console.print(f"[red]classify failed:[/red] {e}")
+        raise typer.Exit(1)
+
+    if cls == "spotify":
+        console.print(
+            "[red]Spotify podcasts are DRM-protected and can't be ingested.[/red] "
+            "Try the podcast's RSS feed URL or Apple Podcasts link."
+        )
+        raise typer.Exit(1)
+    if cls == "unknown":
+        console.print(f"[red]can't ingest {url}[/red] — unknown type (supported: YouTube, podcast RSS, direct audio)")
+        raise typer.Exit(1)
+
+    job_id = enqueue("listener", "transcribe", {"url": url})
+    console.print(
+        f"[green]queued[/green] job {job_id}  "
+        f"([dim]{cls}[/dim]) — Listener will pick it up on next tick"
+    )
+
+
 # ═════════════════════════════════ url / logs / vault-path ═════════════════════════════════
 
 @app.command()

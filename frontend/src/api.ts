@@ -33,6 +33,23 @@ export const api = {
       body: JSON.stringify({ url }),
     }),
 
+  listen: async (url: string): Promise<{ job_id: number; kind: string; message: string }> => {
+    const r = await fetch(`${BASE}/listen`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    if (!r.ok) {
+      let detail = `${r.status}`;
+      try {
+        const body = await r.json() as { detail?: string };
+        if (body && typeof body.detail === 'string' && body.detail) detail = body.detail;
+      } catch { /* ignore parse errors, fall back to status code */ }
+      throw new Error(detail);
+    }
+    return r.json() as Promise<{ job_id: number; kind: string; message: string }>;
+  },
+
   jobs: () => j<{ jobs: Job[] }>(`${BASE}/jobs`),
 
   stats: () => j<{

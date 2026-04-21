@@ -21,7 +21,7 @@ def feed(limit: int = 50):
 
 _AGENT_CATALOG: list[dict] = [
     {"id": "scout",       "name": "Scout",       "role": "Crawls feeds, blogs, RSS",                 "color": "amber",   "implemented": True},
-    {"id": "listener",    "name": "Listener",    "role": "Transcribes podcasts + YouTube",           "color": "violet",  "implemented": False},
+    {"id": "listener",    "name": "Listener",    "role": "Transcribes podcasts + YouTube",           "color": "violet",  "implemented": True},
     {"id": "compiler",    "name": "Compiler",    "role": "Compiles raw → wiki, builds backlinks",    "color": "emerald", "implemented": True},
     {"id": "linter",      "name": "Linter",      "role": "Health checks, broken links, orphans",     "color": "blue",    "implemented": True},
     {"id": "synthesizer", "name": "Synthesizer", "role": "Cross-source synthesis, themes",           "color": "rose",    "implemented": True},

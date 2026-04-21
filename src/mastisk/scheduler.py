@@ -78,6 +78,21 @@ async def start_scheduler():
         log.info("artifact-agent not scheduled: %s", e)
 
     try:
+        from mastisk.agents.listener import Listener
+        # Listener handles YouTube + podcast transcription jobs. Like Compiler,
+        # it's job-driven (CLI / POST /api/listen enqueues work). First tick
+        # 30s after boot so any pending transcribe jobs from a crash resume.
+        sched.add_job(
+            Listener().run_once, "interval",
+            seconds=Listener.tick_seconds, id="listener",
+            max_instances=1,
+            next_run_time=datetime.now(timezone.utc) + timedelta(seconds=30),
+            coalesce=True,
+        )
+    except Exception as e:
+        log.info("listener not scheduled: %s", e)
+
+    try:
         from mastisk.agents.synthesizer import Synthesizer
         # Synthesizer drains any queued synthesizer jobs each tick, then
         # *optionally* attempts one spontaneous cross-article synthesis.
