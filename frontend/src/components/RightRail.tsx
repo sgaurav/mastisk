@@ -13,7 +13,12 @@ export function RightRail({ article, feed, agents, onNavigate }: Props) {
   return (
     <aside className="rail">
       <div className="rail-section">
-        <div className="rail-h">Concept map</div>
+        <div className="rail-h">
+          Concept map
+          {article.related.length > 0 && (
+            <span className="count">{Math.min(article.related.length, 6)}/{article.related.length}</span>
+          )}
+        </div>
         <MiniGraph article={article} onNavigate={onNavigate}/>
       </div>
 
@@ -66,31 +71,93 @@ export function RightRail({ article, feed, agents, onNavigate }: Props) {
   );
 }
 
+const KIND_GLYPH: Record<string, string> = {
+  Concept: '▲',
+  Entity: '●',
+  Source: '◊',
+  Synthesis: '✦',
+};
+
+function shortLabel(label: string, max = 14): string {
+  const clean = label.replace(/[\u2014\u2013]/g, '-').trim();
+  if (clean.length <= max) return clean;
+  // Prefer cutting at a word boundary
+  const cut = clean.slice(0, max);
+  const space = cut.lastIndexOf(' ');
+  return (space > 6 ? cut.slice(0, space) : cut) + '…';
+}
+
 function MiniGraph({ article, onNavigate }: { article: Article; onNavigate: (v: View, id?: string) => void }) {
   const rels = article.related.slice(0, 6);
+  // Empty state — a degenerate graph is worse than honest silence.
+  if (rels.length === 0) {
+    return (
+      <div className="mini-graph mini-graph--empty">
+        <div className="mini-empty">No links yet. Agents are still reading.</div>
+      </div>
+    );
+  }
+
+  // Elliptical orbit. Semi-axes tuned so 6 pills fit without overflowing
+  // the container on the horizontal axis or clashing with the centre pill
+  // on the vertical axis.
+  const W = 100, H = 100;            // SVG viewBox in %-like units
+  const cx = W / 2, cy = H / 2;
+  const rx = 32, ry = 34;             // orbit semi-axes (% of box)
+  const glyph = KIND_GLYPH[article.kind] ?? '•';
+  const centerLabel = shortLabel(article.title, 16);
+
+  const nodes = rels.map((r, i) => {
+    const angle = (i / rels.length) * Math.PI * 2 - Math.PI / 2;
+    return {
+      ...r,
+      x: cx + Math.cos(angle) * rx,
+      y: cy + Math.sin(angle) * ry,
+      label: shortLabel(r.label, 14),
+    };
+  });
+
   return (
     <div className="mini-graph">
-      {rels.map((r, i) => {
-        const angle = (i / rels.length) * Math.PI * 2 - Math.PI/2;
-        const dist = 60 + (1 - r.weight) * 18;
-        const x = 50 + Math.cos(angle) * (dist/180*100);
-        const y = 50 + Math.sin(angle) * (dist/180*100);
-        return (
-          <div key={r.id}>
-            <div className="graph-edge" style={{
-              width: dist,
-              transform: `rotate(${angle}rad)`,
-              opacity: 0.3 + r.weight * 0.5,
-            }}/>
-            <div className="node-rel" style={{ left: `${x}%`, top: `${y}%`, transform: 'translate(-50%,-50%)' }}
-                 onClick={() => onNavigate('article', r.id)}
-                 title={r.label}>
-              {r.label.split(' ').map((w) => w[0]).join('').slice(0, 2)}
-            </div>
-          </div>
-        );
-      })}
-      <div className="node-center">{article.title.split(' ').map((w) => w[0]).join('').slice(0, 3)}</div>
+      {/* Edges: SVG so thickness + opacity both scale smoothly. */}
+      <svg className="mini-edges" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden>
+        {nodes.map((n) => (
+          <line
+            key={`e-${n.id}`}
+            x1={cx} y1={cy} x2={n.x} y2={n.y}
+            className="mini-edge"
+            style={{
+              strokeWidth: 0.4 + n.weight * 0.8,
+              strokeOpacity: 0.2 + n.weight * 0.55,
+            }}
+          />
+        ))}
+      </svg>
+
+      {/* Related nodes */}
+      {nodes.map((n) => (
+        <button
+          key={n.id}
+          type="button"
+          className="mini-pill"
+          style={{
+            left: `${n.x}%`,
+            top: `${n.y}%`,
+            // Weak links sit slightly ghosted; strong ones are fully present.
+            opacity: 0.55 + n.weight * 0.45,
+          }}
+          onClick={() => onNavigate('article', n.id)}
+          title={`${article.related.find((r) => r.id === n.id)?.label ?? n.id}  ·  ${n.weight.toFixed(2)}`}
+        >
+          {n.label}
+        </button>
+      ))}
+
+      {/* Center: the article itself */}
+      <div className="mini-center" title={article.title}>
+        <span className={`mini-center-glyph k-${article.kind.toLowerCase()}`}>{glyph}</span>
+        <span className="mini-center-label">{centerLabel}</span>
+      </div>
     </div>
   );
 }
