@@ -110,6 +110,21 @@ export function ArticleView({ article, onAsk, onNavigate }: Props) {
 
       {article.kind === 'Synthesis' && <SynthesisFeedback articleId={article.id}/>}
 
+      {article.heroImageUrl && (
+        <figure className="art-hero">
+          <img
+            src={article.heroImageUrl}
+            alt={`${article.title} hero`}
+            loading="lazy"
+            onError={(e) => {
+              // Hide broken hero images rather than showing the browser's
+              // default "missing image" glyph above the title.
+              (e.currentTarget.parentElement as HTMLElement | null)?.remove();
+            }}
+          />
+        </figure>
+      )}
+
       <p className="art-summary" dangerouslySetInnerHTML={{ __html: article.summary }}/>
 
       <div className="art-stats">
@@ -141,6 +156,29 @@ export function ArticleView({ article, onAsk, onNavigate }: Props) {
           );
         })}
       </div>
+
+      {article.media && article.media.length > 0 && (
+        <div className="art-media">
+          <h3>From the source</h3>
+          <div className="art-media-grid">
+            {article.media.map((m, i) => (
+              <figure key={`${m.src}-${i}`} className="art-media-item">
+                <img
+                  src={m.src}
+                  alt={m.alt || ''}
+                  loading="lazy"
+                  onError={(e) => {
+                    (e.currentTarget.parentElement as HTMLElement | null)?.remove();
+                  }}
+                />
+                {(m.caption || m.alt) && (
+                  <figcaption>{m.caption || m.alt}</figcaption>
+                )}
+              </figure>
+            ))}
+          </div>
+        </div>
+      )}
 
       {article.sourceList.length > 0 && (
         <div className="art-sources">

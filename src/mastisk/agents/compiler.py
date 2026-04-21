@@ -91,7 +91,7 @@ class Compiler(Agent):
 
         with connect() as conn:
             src = conn.execute(
-                "SELECT id, kind, url, title, raw_path FROM sources WHERE id=?",
+                "SELECT id, kind, url, title, raw_path, hero_image_url FROM sources WHERE id=?",
                 (source_id,),
             ).fetchone()
         if not src:
@@ -128,6 +128,10 @@ class Compiler(Agent):
         if data.get("kind") == "Synthesis":
             data["kind"] = "Concept"
 
+        # Pass the source's hero through so upsert_article can COALESCE it
+        # into articles.hero_image_url. A recompile without a hero leaves the
+        # previous one intact (see queries.upsert_article).
+        data["hero_image_url"] = src["hero_image_url"]
         self._persist_article(data, source_id=source_id)
         self.emit_feed(
             verb="wrote" if self._is_new(data["id"]) else "updated",
@@ -191,6 +195,7 @@ class Compiler(Agent):
                 "reading_minutes": int(data.get("reading_minutes", 5)),
                 "updated_by": "Compiler",
                 "vault_path": str(vault_path),
+                "hero_image_url": data.get("hero_image_url"),
             })
             q.replace_sections(conn, article_id, data.get("sections", []))
             # Stub any body-referenced targets that don't have their own article

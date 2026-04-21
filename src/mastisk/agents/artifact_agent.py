@@ -200,6 +200,7 @@ class ArtifactAgent(Agent):
         # insert the new batch. User-created artifacts (created_by='user' or
         # anything other than 'artifact-agent') are left alone.
         inserted = 0
+        insert_errors: list[str] = []
         with connect() as conn, q.txn(conn):
             existing = q.list_artifacts(conn, article_id)
             for old in existing:
@@ -220,19 +221,29 @@ class ArtifactAgent(Agent):
                     inserted += 1
                 except Exception as e:
                     # Don't blow up the whole batch if one insert fails; just
-                    # log and keep going. Most likely cause is a spec that
-                    # isn't JSON-serializable (nested non-dict/list).
+                    # log, collect the reason, and keep going. Most likely
+                    # cause is a spec that isn't JSON-serializable.
                     log.warning("artifact-agent: insert failed for %s: %s",
                                 article_id, e)
+                    insert_errors.append(str(e))
 
-        if inserted:
-            self.emit_feed(
-                verb="generated",
-                obj=(article.get("title") or article_id)[:80],
-                kind="artifact",
-                touched=inserted,
-                payload={"article_id": article_id, "count": inserted},
+        if not inserted:
+            # Every insert failed (or valid was somehow empty at this point).
+            # Surface this as a failed job so the Queue view shows the error
+            # instead of silently reporting "done" with an empty panel.
+            reason = insert_errors[0] if insert_errors else "no artifacts inserted"
+            raise RuntimeError(
+                f"no artifacts inserted for {article_id} "
+                f"({len(valid)} valid, {len(insert_errors)} insert errors): {reason}"
             )
+
+        self.emit_feed(
+            verb="generated",
+            obj=(article.get("title") or article_id)[:80],
+            kind="artifact",
+            touched=inserted,
+            payload={"article_id": article_id, "count": inserted},
+        )
 
     # ───── prompt construction ─────
 

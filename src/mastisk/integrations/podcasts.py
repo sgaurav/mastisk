@@ -81,6 +81,7 @@ async def resolve_rss_episode(feed_url: str, max_episodes: int = 1) -> list[dict
     if parsed.bozo and not parsed.entries:
         raise RuntimeError(f"malformed rss feed: {parsed.bozo_exception}")
 
+    feed_image = _pick_feed_image(parsed.feed)
     out: list[dict] = []
     for entry in parsed.entries[: max(1, max_episodes)]:
         audio_url = _pick_audio_enclosure(entry)
@@ -91,6 +92,7 @@ async def resolve_rss_episode(feed_url: str, max_episodes: int = 1) -> list[dict
         audio_url = urljoin(feed_url, audio_url)
         pub = entry.get("published_parsed") or entry.get("updated_parsed")
         pub_iso = datetime(*pub[:6]).isoformat(sep=" ") if pub else None
+        image = _pick_entry_image(entry) or feed_image
         out.append({
             "title": entry.get("title") or "",
             "audio_url": audio_url,
@@ -98,8 +100,44 @@ async def resolve_rss_episode(feed_url: str, max_episodes: int = 1) -> list[dict
             "author": entry.get("author") or parsed.feed.get("author") or "",
             "description": entry.get("summary") or entry.get("description") or "",
             "duration": entry.get("itunes_duration") or "",
+            "image": image,
         })
     return out
+
+
+def _pick_feed_image(feed: dict) -> str | None:
+    """Channel-level cover art. Most podcasts put it in ``image.href`` or
+    ``itunes_image.href``."""
+    if not feed:
+        return None
+    img = feed.get("image")
+    if isinstance(img, dict):
+        href = img.get("href") or img.get("url")
+        if href:
+            return href
+    elif isinstance(img, str) and img:
+        return img
+    it = feed.get("itunes_image")
+    if isinstance(it, dict):
+        href = it.get("href")
+        if href:
+            return href
+    return None
+
+
+def _pick_entry_image(entry: dict) -> str | None:
+    """Per-episode cover art, if the feed overrides the channel default."""
+    it = entry.get("itunes_image")
+    if isinstance(it, dict):
+        href = it.get("href")
+        if href:
+            return href
+    # Some feeds use media:thumbnail at the entry level.
+    for mt in entry.get("media_thumbnail") or []:
+        href = mt.get("url") if isinstance(mt, dict) else None
+        if href:
+            return href
+    return None
 
 
 def _pick_audio_enclosure(entry: dict) -> str | None:

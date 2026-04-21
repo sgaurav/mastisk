@@ -78,6 +78,7 @@ class Listener(Agent):
                 "show_title": feed_title,
                 "published_at": ep.get("published_at"),
                 "feed_url": url,
+                "image": ep.get("image"),
             })
             self.emit_feed(
                 verb="queued",
@@ -132,6 +133,7 @@ class Listener(Agent):
                 "source_kind": "youtube",
                 "url": meta.get("webpage_url") or url,
                 "duration_sec": meta.get("duration_sec"),
+                "hero_image_url": meta.get("thumbnail") or None,
             }
             await self._finalize_ingest(
                 transcript=transcript,
@@ -188,6 +190,7 @@ class Listener(Agent):
         show = payload.get("show_title") or ""
         published_at = payload.get("published_at")
         feed_url = payload.get("feed_url")
+        episode_image = payload.get("image") or None
 
         src_id = _hash16(audio_url)
         if self._source_exists(src_id):
@@ -218,6 +221,7 @@ class Listener(Agent):
                 "url": audio_url,
                 "duration_sec": None,
                 "feed_url": feed_url,
+                "hero_image_url": episode_image,
             }
             await self._finalize_ingest(
                 transcript=transcript,
@@ -291,8 +295,8 @@ class Listener(Agent):
         with connect() as conn, q.txn(conn):
             cur = conn.execute(
                 """INSERT OR IGNORE INTO sources
-                   (id, kind, url, title, published_at, raw_path, author)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                   (id, kind, url, title, published_at, raw_path, author, hero_image_url)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     src_id,
                     source_kind,
@@ -301,6 +305,7 @@ class Listener(Agent):
                     source_context.get("published_at"),
                     str(raw_dir() / f"{src_id}.txt"),
                     source_context.get("author") or None,
+                    source_context.get("hero_image_url") or None,
                 ),
             )
             inserted = (cur.rowcount or 0) > 0
@@ -417,6 +422,7 @@ class Listener(Agent):
                 "reading_minutes": 1,
                 "updated_by": "listener",
                 "vault_path": str(vault_path),
+                "hero_image_url": cover or None,
             })
             q.replace_sections(conn, slug, [
                 {"h": "About", "body": about_html, "kind": "section"},

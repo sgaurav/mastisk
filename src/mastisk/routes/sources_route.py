@@ -93,6 +93,22 @@ def list_sources(limit: int = 50):
     return {"sources": rows}
 
 
+@router.get("/jobs/{job_id}")
+def get_job(job_id: int):
+    """Single-job status lookup, used by the frontend to poll regenerate jobs
+    without repeatedly pulling the full queue."""
+    with connect() as conn:
+        row = conn.execute(
+            """SELECT id, agent, kind, status, attempts, error,
+                      created_at, started_at, finished_at
+               FROM jobs WHERE id = ?""",
+            (job_id,),
+        ).fetchone()
+    if not row:
+        raise HTTPException(404, "job not found")
+    return {"job": dict(row)}
+
+
 @router.get("/jobs")
 def list_jobs(limit: int = 50):
     """Return jobs with payload-derived detail so the queue view can show what's

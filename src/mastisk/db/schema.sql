@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS articles (
   created_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_by       TEXT,
-  vault_path       TEXT
+  vault_path       TEXT,
+  hero_image_url   TEXT                       -- optional hero picked from the source at ingest time
 );
 
 CREATE INDEX IF NOT EXISTS idx_articles_kind ON articles(kind);
@@ -56,7 +57,9 @@ CREATE TABLE IF NOT EXISTS sources (
   published_at  DATETIME,
   fetched_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
   raw_path      TEXT,                          -- ./data/raw/<hash>.{txt,html,vtt}
-  author        TEXT
+  author        TEXT,
+  hero_image_url TEXT,                         -- optional thumbnail / cover art captured at ingest
+  media_json    TEXT                           -- inline media captured at ingest (JSON array of {src, alt, caption})
 );
 CREATE INDEX IF NOT EXISTS idx_sources_kind ON sources(kind);
 

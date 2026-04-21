@@ -52,6 +52,19 @@ export const api = {
 
   jobs: () => j<{ jobs: Job[] }>(`${BASE}/jobs`),
 
+  job: (id: number) =>
+    j<{ job: {
+      id: number;
+      agent: string;
+      kind: string;
+      status: 'queued' | 'running' | 'done' | 'failed';
+      attempts: number;
+      error: string | null;
+      created_at: string;
+      started_at: string | null;
+      finished_at: string | null;
+    } }>(`${BASE}/jobs/${id}`),
+
   stats: () => j<{
     counts: Record<string, number>;
     feeds_enabled: number;

@@ -154,10 +154,12 @@ class Scout(Agent):
 
                 # Fetch + extract clean text (async so slow sites don't block the tick)
                 body = summary
+                page_html: str | None = None
                 try:
                     async with httpx.AsyncClient(timeout=HTTP_TIMEOUT, follow_redirects=True) as c:
                         page = await c.get(link, headers={"User-Agent": USER_AGENT})
                         if page.status_code < 400:
+                            page_html = page.text
                             extracted = trafilatura.extract(
                                 page.text,
                                 include_comments=False,
@@ -176,10 +178,34 @@ class Scout(Agent):
                 published = entry.get("published_parsed")
                 published_iso = datetime(*published[:6]).isoformat(sep=" ") if published else None
 
+                # Hero: entry-level thumbnail beats anything we scrape from the
+                # page HTML. Falls back to the first <img> in the summary or body.
+                hero = _pick_entry_thumbnail(entry) \
+                    or _first_img_in_html(summary) \
+                    or (_first_img_in_html(page_html) if page_html else None)
+                # Inline media: up to a handful of additional images from the
+                # extracted page body. Always relative-resolved against the page
+                # URL so downstream renderers don't have to re-parse.
+                inline_media = _extract_inline_images(page_html, link, limit=6) if page_html else []
+                # De-dupe hero out of the inline list so it isn't shown twice.
+                if hero:
+                    inline_media = [m for m in inline_media if m.get("src") != hero]
+
                 conn.execute(
-                    """INSERT INTO sources (id, kind, url, title, published_at, raw_path, author)
-                       VALUES (?, 'blog', ?, ?, ?, ?, ?)""",
-                    (src_id, link, title, published_iso, str(raw_path), entry.get("author")),
+                    """INSERT INTO sources
+                       (id, kind, url, title, published_at, raw_path, author,
+                        hero_image_url, media_json)
+                       VALUES (?, 'blog', ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        src_id,
+                        link,
+                        title,
+                        published_iso,
+                        str(raw_path),
+                        entry.get("author"),
+                        hero,
+                        json.dumps(inline_media) if inline_media else None,
+                    ),
                 )
                 enqueue("compiler", kind="compile", payload={"source_id": src_id})
                 self.emit_feed(verb="clipped", obj=title[:80], kind="blog", payload={"source_id": src_id})
@@ -227,3 +253,79 @@ class Scout(Agent):
         except Exception as e:
             log.info("scout embed failed, fail-open: %s", e)
             return True
+
+
+# ───── image-extraction helpers ─────
+
+_IMG_RE = re.compile(
+    r'<img\b[^>]*?\bsrc\s*=\s*(?:"([^"]+)"|\'([^\']+)\'|([^\s>]+))[^>]*>',
+    re.IGNORECASE,
+)
+_IMG_ALT_RE = re.compile(r'\balt\s*=\s*(?:"([^"]*)"|\'([^\']*)\')', re.IGNORECASE)
+
+
+def _pick_entry_thumbnail(entry: dict) -> str | None:
+    """RSS entry-level thumbnail. Most feeds use ``media_thumbnail`` (mRSS)
+    or ``media_content``; some stuff an image into the entry directly."""
+    for mt in entry.get("media_thumbnail") or []:
+        href = mt.get("url") if isinstance(mt, dict) else None
+        if href:
+            return href
+    for mc in entry.get("media_content") or []:
+        if not isinstance(mc, dict):
+            continue
+        if (mc.get("medium") or "").lower() == "image" and mc.get("url"):
+            return mc["url"]
+        # Some feeds omit medium; trust the extension.
+        url = mc.get("url") or ""
+        if url.lower().split("?", 1)[0].endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
+            return url
+    image = entry.get("image")
+    if isinstance(image, dict):
+        href = image.get("href") or image.get("url")
+        if href:
+            return href
+    return None
+
+
+def _first_img_in_html(html: str | None) -> str | None:
+    """Return the first ``<img src>`` value in an HTML fragment, or None."""
+    if not html:
+        return None
+    m = _IMG_RE.search(html)
+    if not m:
+        return None
+    return m.group(1) or m.group(2) or m.group(3) or None
+
+
+def _extract_inline_images(html: str | None, base_url: str, *, limit: int) -> list[dict]:
+    """Collect up to ``limit`` distinct ``<img>`` URLs from ``html``.
+
+    Resolves relative URLs against ``base_url`` and skips obvious tracking
+    pixels (1x1, data URIs). Order follows document order. Returned dicts
+    match the frontend ``Article.media`` shape: ``{src, alt, caption?}``.
+    """
+    if not html:
+        return []
+    from urllib.parse import urljoin
+
+    seen: set[str] = set()
+    out: list[dict] = []
+    for m in _IMG_RE.finditer(html):
+        src = m.group(1) or m.group(2) or m.group(3)
+        if not src:
+            continue
+        if src.startswith("data:"):
+            continue
+        absolute = urljoin(base_url, src)
+        if absolute in seen:
+            continue
+        seen.add(absolute)
+        # Pull an alt attribute out of the same tag if present. Cheap — we're
+        # already iterating over the matched substring.
+        alt_match = _IMG_ALT_RE.search(m.group(0))
+        alt = (alt_match.group(1) or alt_match.group(2)) if alt_match else ""
+        out.append({"src": absolute, "alt": alt})
+        if len(out) >= limit:
+            break
+    return out

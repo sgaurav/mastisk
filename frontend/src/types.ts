@@ -24,6 +24,12 @@ export type ArticlePreview =
   | { id: string; exists: true; kind: ArticleKind; title: string; summary: string }
   | { id: string; exists: false };
 
+export interface ArticleMedia {
+  src: string;
+  alt?: string;
+  caption?: string;
+}
+
 export interface Article {
   id: string;
   kind: ArticleKind;
@@ -43,6 +49,8 @@ export interface Article {
   updated_by: string;
   updated_at: string;
   vault_path?: string;
+  heroImageUrl?: string | null;
+  media?: ArticleMedia[];
 }
 
 export interface VaultPage {

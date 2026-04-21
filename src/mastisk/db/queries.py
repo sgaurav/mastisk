@@ -33,9 +33,29 @@ def init_schema(conn: sqlite3.Connection | None = None) -> None:
     c = conn or connect()
     try:
         c.executescript(_SCHEMA_PATH.read_text())
+        _run_migrations(c)
     finally:
         if own:
             c.close()
+
+
+def _add_column_if_missing(
+    conn: sqlite3.Connection, table: str, column: str, decl: str
+) -> None:
+    """Idempotent ALTER TABLE ... ADD COLUMN. SQLite has no IF NOT EXISTS for
+    ADD COLUMN, so we peek at the current column set first. Cheap — pragma
+    returns at most a dozen rows."""
+    cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+    if column not in cols:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+
+
+def _run_migrations(conn: sqlite3.Connection) -> None:
+    """Idempotent column additions for pre-existing DBs. CREATE TABLE IF NOT
+    EXISTS handles fresh installs; this handles upgrade-in-place."""
+    _add_column_if_missing(conn, "articles", "hero_image_url", "TEXT")
+    _add_column_if_missing(conn, "sources", "hero_image_url", "TEXT")
+    _add_column_if_missing(conn, "sources", "media_json", "TEXT")
 
 
 @contextmanager
@@ -104,20 +124,48 @@ def get_article(conn: sqlite3.Connection, article_id: str) -> dict | None:
     d["sources"] = d.pop("sources_count", 0)
     d["backlinks"] = d.pop("backlinks_count", 0)
     d["forwardlinks"] = d.pop("forwardlinks_count", 0)
+    d["heroImageUrl"] = d.pop("hero_image_url", None)
+    # Inline media: the Compiler-time copy lives on sources; for now we union
+    # the media_json from all sources attached to this article.
+    media: list[dict] = []
+    for r in conn.execute(
+        """SELECT s.media_json FROM article_sources a_s
+           JOIN sources s ON s.id = a_s.source_id
+           WHERE a_s.article_id = ?""",
+        (article_id,),
+    ):
+        raw = r["media_json"]
+        if not raw:
+            continue
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, list):
+            for m in parsed:
+                if isinstance(m, dict) and m.get("src"):
+                    media.append(m)
+    d["media"] = media
     return d
 
 
 def upsert_article(conn: sqlite3.Connection, art: dict) -> None:
+    # hero_image_url uses COALESCE-on-update so a recompile doesn't wipe a
+    # hero set by an earlier ingest pass. Pass an empty string (not None) to
+    # explicitly clear it if that's ever needed.
     conn.execute(
         """INSERT INTO articles (id, kind, title, slug, aka_json, summary, body_md,
-                                 confidence, reading_minutes, updated_by, vault_path)
+                                 confidence, reading_minutes, updated_by, vault_path,
+                                 hero_image_url)
            VALUES (:id, :kind, :title, :slug, :aka_json, :summary, :body_md,
-                   :confidence, :reading_minutes, :updated_by, :vault_path)
+                   :confidence, :reading_minutes, :updated_by, :vault_path,
+                   :hero_image_url)
            ON CONFLICT(id) DO UPDATE SET
              kind=excluded.kind, title=excluded.title, slug=excluded.slug,
              aka_json=excluded.aka_json, summary=excluded.summary, body_md=excluded.body_md,
              confidence=excluded.confidence, reading_minutes=excluded.reading_minutes,
              updated_by=excluded.updated_by, vault_path=excluded.vault_path,
+             hero_image_url=COALESCE(excluded.hero_image_url, articles.hero_image_url),
              updated_at=CURRENT_TIMESTAMP""",
         {
             "id": art["id"],
@@ -131,6 +179,7 @@ def upsert_article(conn: sqlite3.Connection, art: dict) -> None:
             "reading_minutes": art.get("reading_minutes", 3),
             "updated_by": art.get("updated_by"),
             "vault_path": art.get("vault_path"),
+            "hero_image_url": art.get("hero_image_url"),
         },
     )
 
