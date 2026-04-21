@@ -84,7 +84,7 @@ Any editor┘                                                           │  mv 
 | Scheduler | `src/mastisk/scheduler.py` | edit | Three new `sched.add_job` registrations: `notetaker` agent tick (30s — filesystem scan + classify batch), `escalator` agent tick (60s — retry reactivation + evaluate), `vault_integrity` plain-function tick (5min — tombstone notes whose file was deleted). Follow the existing Scout/Listener `try/except import + add_job` pattern. |
 | Frontend | `frontend/src/components/NoteCaptureModal.tsx`, `NotesView.tsx`, `NoteView.tsx`; update `App.tsx`, `types.ts` (`View` discriminator), `router.ts`, `Titlebar.tsx` | new | Capture modal (pattern from `AskDrawer`), notes-list view, note-detail view with "Research this" button. Extend existing `view` switch in `App.tsx` — no separate `Home.tsx` / `routes/` directory in this codebase. Auto-escalation toast piggybacks on existing SSE (see §7). |
 | DB schema | `src/mastisk/db/schema.sql` (append) | edit | Three new tables: `notes`, `note_links`, `note_escalations`, all with `CREATE TABLE IF NOT EXISTS` to match existing pattern |
-| DB post-init | `src/mastisk/db/queries.py` (`init_schema`) | edit | After `executescript`, run idempotent `ALTER TABLE articles ADD COLUMN source_note_id INTEGER REFERENCES notes(id) ON DELETE SET NULL` and swallow the "duplicate column" error. Mastisk has no migrations framework; this is the simplest forward-compat path. |
+| DB post-init | `src/mastisk/db/queries.py` (`_run_migrations`) | edit | Append one line using the **pre-existing** `_add_column_if_missing(conn, "articles", "source_note_id", "INTEGER REFERENCES notes(id) ON DELETE SET NULL")` helper. Mastisk already uses this pattern for `hero_image_url`, `media_json`, etc. — no new migration framework needed. |
 | Config | `~/Library/Application Support/Mastisk/config.toml` | edit | New `[notes]` section |
 | Vault layout | `vault/_notes/{inbox,YYYY-MM-DD,daily}/` | new | Document in README |
 
@@ -187,21 +187,20 @@ CREATE INDEX IF NOT EXISTS idx_note_escalations_note         ON note_escalations
 CREATE INDEX IF NOT EXISTS idx_note_escalations_triggered_at ON note_escalations(triggered_at);
 ```
 
-**Post-init idempotent ALTER (in `queries.py::init_schema`, after `executescript`):**
+**Post-init ALTER (in `queries.py::_run_migrations`, reusing existing pattern):**
 
 ```python
-_POST_INIT_ALTERS = [
-    # Forward-link from article back to originating note. Nullable, non-breaking.
-    "ALTER TABLE articles ADD COLUMN source_note_id INTEGER REFERENCES notes(id) ON DELETE SET NULL",
-]
-
-for alter in _POST_INIT_ALTERS:
-    try:
-        c.execute(alter)
-    except sqlite3.OperationalError as e:
-        if "duplicate column name" not in str(e).lower():
-            raise
+def _run_migrations(conn: sqlite3.Connection) -> None:
+    # ...existing lines (hero_image_url on articles, etc.)...
+    _add_column_if_missing(
+        conn,
+        "articles",
+        "source_note_id",
+        "INTEGER REFERENCES notes(id) ON DELETE SET NULL",
+    )
 ```
+
+The `_add_column_if_missing` helper is already in `queries.py` — it inspects `PRAGMA table_info` and only ALTERs if the column is absent. No new framework.
 
 **Why body snapshot + sha256:** file-not-found (user deleted via Obsidian) still lets us surface the note as a tombstone. The sha256 lets us detect "user edited the prose" during a scan without re-reading the file on every tick.
 
