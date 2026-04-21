@@ -16,6 +16,7 @@ export interface RelatedLink {
 export interface SourceRow {
   kind: string;
   title: string;
+  url: string | null;
   date: string;
 }
 
@@ -90,6 +91,7 @@ export interface JobDetail {
   subtitle: string | null;
   url: string | null;
   source_kind: string | null;
+  article_id: string | null;
 }
 
 export interface Job {

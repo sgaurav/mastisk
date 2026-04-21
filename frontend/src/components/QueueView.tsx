@@ -1,8 +1,13 @@
+import type React from 'react';
 import { useEffect, useState } from 'react';
 import { api } from '../api';
-import type { Job } from '../types';
+import type { Job, View } from '../types';
 
-export function QueueView() {
+interface Props {
+  onNavigate?: (view: View, id?: string) => void;
+}
+
+export function QueueView({ onNavigate }: Props = {}) {
   const [jobs, setJobs] = useState<Job[] | null>(null);
 
   useEffect(() => {
@@ -39,7 +44,7 @@ export function QueueView() {
         </div>
       ) : (
         <div className="queue-list">
-          {jobs.map((j) => <QueueRow key={j.id} job={j}/>)}
+          {jobs.map((j) => <QueueRow key={j.id} job={j} onNavigate={onNavigate}/>)}
         </div>
       )}
     </div>
@@ -54,15 +59,30 @@ function Counter({ n, label, variant }: { n: number; label: string; variant?: 'a
   return <div className={cls.join(' ')}><div className="v">{n}</div><div className="l">{label}</div></div>;
 }
 
-function QueueRow({ job }: { job: Job }) {
+function QueueRow({ job, onNavigate }: { job: Job; onNavigate?: (view: View, id?: string) => void }) {
   const rawTitle = job.detail.title;
   const title = rawTitle ?? fallbackTitle(job);
   const isFallback = !rawTitle;
   const subtitle = job.detail.subtitle;
   const srcKind = job.detail.source_kind;
+  const articleId = job.detail.article_id;
+  const clickable = !!(articleId && onNavigate);
+
+  const onClick = clickable ? () => onNavigate!('article', articleId!) : undefined;
+  const onKeyDown = clickable
+    ? (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onNavigate!('article', articleId!); }
+      }
+    : undefined;
 
   return (
-    <div className={`queue-row s-${job.status}`}>
+    <div
+      className={`queue-row s-${job.status}${clickable ? ' is-clickable' : ''}`}
+      onClick={onClick}
+      onKeyDown={onKeyDown}
+      role={clickable ? 'link' : undefined}
+      tabIndex={clickable ? 0 : undefined}
+    >
       <div className="queue-id">#{job.id}</div>
       <div className="queue-title">
         <div className={`queue-title-line${isFallback ? ' is-fallback' : ''}`} title={title}>{title}</div>

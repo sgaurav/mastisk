@@ -162,26 +162,35 @@ class ArtifactAgent(Agent):
 
         prompt = self._build_prompt(article)
 
-        # Fail-open on Ollama unreachability: log + return. The job marks done;
-        # the user can click regenerate again once the model is back.
+        # Fail loud if Ollama is unreachable — the user clicked regenerate and
+        # deserves to see the failure in the queue row instead of a silent no-op.
         try:
             reply = await ollama_bridge.chat(prompt, cheap=False)
         except Exception as e:
             log.warning("artifact-agent: ollama unreachable for article %s: %s",
                         article_id, e)
-            return
+            raise RuntimeError(
+                f"ollama unreachable — check your local Ollama server or cloud key "
+                f"in Settings (article {article_id})"
+            ) from e
 
         artifacts = self._parse_response(reply)
         if not artifacts:
             log.info("artifact-agent: no valid artifacts parsed for article %s "
                      "(reply len=%d)", article_id, len(reply or ""))
-            return
+            raise RuntimeError(
+                f"model returned no parseable artifacts for {article_id} "
+                f"(reply len={len(reply or '')})"
+            )
 
         valid = [a for a in artifacts if self._is_valid(a)]
         if not valid:
             log.info("artifact-agent: all %d artifacts failed validation for %s",
                      len(artifacts), article_id)
-            return
+            raise RuntimeError(
+                f"all {len(artifacts)} generated artifacts failed validation "
+                f"for {article_id}"
+            )
 
         # Cap at 3 regardless of what the model returned — defensive against a
         # model that ignores the "1–3" instruction.

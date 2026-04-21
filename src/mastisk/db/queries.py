@@ -93,7 +93,7 @@ def get_article(conn: sqlite3.Connection, article_id: str) -> dict | None:
     d["sourceList"] = [
         dict(r)
         for r in conn.execute(
-            """SELECT sources.kind, sources.title, sources.published_at AS date
+            """SELECT sources.kind, sources.title, sources.url, sources.published_at AS date
                FROM article_sources JOIN sources ON sources.id = article_sources.source_id
                WHERE article_sources.article_id = ?""",
             (article_id,),

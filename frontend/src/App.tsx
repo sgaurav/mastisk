@@ -136,7 +136,7 @@ export function App() {
         {view === 'graph' && <GraphView onNavigate={navigate}/>}
         {view === 'ingest' && <IngestView/>}
         {view === 'open_questions' && <OpenQuestionsView onNavigate={navigate}/>}
-        {view === 'queue' && <QueueView/>}
+        {view === 'queue' && <QueueView onNavigate={navigate}/>}
         {view === 'lint' && <SystemCheckView/>}
         {view === 'settings' && <SettingsView/>}
         {view === 'mobile' && (

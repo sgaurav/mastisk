@@ -99,6 +99,14 @@ export function ArticleView({ article, onAsk, onNavigate }: Props) {
           {article.aka.map((a, i) => <span key={i} className="alias">{a}{i < article.aka.length-1 ? ' ·' : ''}</span>)}
         </div>
       )}
+      {article.sourceList.length === 1 && article.sourceList[0].url && (
+        <div className="art-source-pin">
+          <span className="label">source</span>
+          <a href={article.sourceList[0].url} target="_blank" rel="noopener noreferrer" className="art-source-link">
+            {hostOf(article.sourceList[0].url)}
+          </a>
+        </div>
+      )}
 
       {article.kind === 'Synthesis' && <SynthesisFeedback articleId={article.id}/>}
 
@@ -140,7 +148,13 @@ export function ArticleView({ article, onAsk, onNavigate }: Props) {
           {article.sourceList.map((s, i) => (
             <div key={i} className="src-row">
               <div className="src-kind">{s.kind}</div>
-              <div className="src-title">{s.title}</div>
+              {s.url ? (
+                <a className="src-title src-link" href={s.url} target="_blank" rel="noopener noreferrer">
+                  {s.title || s.url}
+                </a>
+              ) : (
+                <div className="src-title">{s.title}</div>
+              )}
               <div className="src-date">{s.date}</div>
             </div>
           ))}
@@ -164,4 +178,8 @@ export function ArticleView({ article, onAsk, onNavigate }: Props) {
       )}
     </div>
   );
+}
+
+function hostOf(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; }
 }
