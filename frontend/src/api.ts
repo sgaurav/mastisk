@@ -1,7 +1,7 @@
 import type {
-  Article, ArticlePreview, AskResponse, Digest, Feed, FeedTick, AgentInfo,
-  GraphData, Job, OpenQuestionsResponse, PinnedItem, SettingsBundle,
-  SettingsPatch, UserInfo, VaultItem,
+  Article, ArticlePreview, Artifact, ArtifactKind, AskResponse, Digest, Feed,
+  FeedTick, AgentInfo, GraphData, Job, OpenQuestionsResponse, PinnedItem,
+  SettingsBundle, SettingsPatch, UserInfo, VaultItem,
 } from './types';
 
 const BASE = '/api';
@@ -94,6 +94,38 @@ export const api = {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ content }),
     }),
+
+  artifacts: (articleId: string) =>
+    j<{ artifacts: Artifact[] }>(`${BASE}/articles/${articleId}/artifacts`),
+
+  createArtifact: (
+    articleId: string,
+    body: { kind: ArtifactKind; title: string; description?: string | null; spec: Record<string, unknown> },
+  ) =>
+    j<Artifact>(`${BASE}/articles/${articleId}/artifacts`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+
+  updateArtifact: (
+    id: number,
+    patch: { title?: string; description?: string | null; spec?: Record<string, unknown> },
+  ) =>
+    j<Artifact>(`${BASE}/artifacts/${id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(patch),
+    }),
+
+  deleteArtifact: (id: number) =>
+    fetch(`${BASE}/artifacts/${id}`, { method: 'DELETE' }),
+
+  regenerateArtifacts: (articleId: string) =>
+    j<{ queued: boolean; job_id?: number | string }>(
+      `${BASE}/articles/${articleId}/artifacts/regenerate`,
+      { method: 'POST' },
+    ),
 
   settings: () => j<SettingsBundle>(`${BASE}/settings`),
   saveSettings: (patch: SettingsPatch) =>

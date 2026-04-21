@@ -1,4 +1,5 @@
 import type { Article, AgentInfo, FeedTick, View } from '../types';
+import { ArtifactPanel } from './ArtifactPanel';
 
 interface Props {
   article: Article;
@@ -26,6 +27,8 @@ export function RightRail({ article, feed, agents, onNavigate }: Props) {
           </div>
         ))}
       </div>
+
+      <ArtifactPanel article={article}/>
 
       <div className="rail-section">
         <div className="rail-h">Backlinks <span className="count">{article.backlinks}</span></div>

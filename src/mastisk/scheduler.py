@@ -62,6 +62,21 @@ async def start_scheduler():
     except Exception as e:
         log.info("linter not scheduled: %s", e)
 
+    try:
+        from mastisk.agents.artifact_agent import ArtifactAgent
+        # ArtifactAgent is job-driven (regenerate endpoint enqueues work).
+        # Fire 30s after boot so any pending regenerate jobs from before a
+        # restart pick up promptly.
+        sched.add_job(
+            ArtifactAgent().run_once, "interval",
+            seconds=ArtifactAgent.tick_seconds, id="artifact-agent",
+            max_instances=1,
+            next_run_time=datetime.now(timezone.utc) + timedelta(seconds=30),
+            coalesce=True,
+        )
+    except Exception as e:
+        log.info("artifact-agent not scheduled: %s", e)
+
     sched.start()
     log.info("scheduler started")
     return sched

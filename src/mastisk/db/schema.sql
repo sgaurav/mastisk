@@ -135,6 +135,23 @@ CREATE TABLE IF NOT EXISTS agent_runs (
   error TEXT
 );
 
+-- Per-article artifacts — charts, comparison cards, timelines, stat panels, etc.
+-- Rendered in the article's right rail. spec_json is the declarative spec the
+-- frontend consumes (Chart.js config for kind='chart', structured JSON for the
+-- others). The generator (artifact-agent) and humans can both write these.
+CREATE TABLE IF NOT EXISTS article_artifacts (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  article_id   TEXT NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+  kind         TEXT NOT NULL,      -- 'chart' | 'comparison' | 'timeline' | 'stat'
+  title        TEXT NOT NULL,
+  description  TEXT,               -- 1-2 sentence narrative that goes next to the viz
+  spec_json    TEXT NOT NULL,      -- Chart.js config OR declarative spec for other kinds
+  created_by   TEXT,               -- 'compiler' | 'artifact-agent' | 'user'
+  created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_artifacts_article ON article_artifacts(article_id);
+
 -- Linter finding dedup: each structural finding gets a stable hash so the
 -- Linter only emits a feed row the first time it sees a condition. Bumping
 -- last_seen on subsequent hits lets us age out stale findings without feed

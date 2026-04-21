@@ -219,6 +219,20 @@ export interface SettingsBundle {
   cloud_active: boolean;
 }
 
+export type ArtifactKind = 'chart' | 'comparison' | 'timeline' | 'stat';
+
+export interface Artifact {
+  id: number;
+  article_id: string;
+  kind: ArtifactKind;
+  title: string;
+  description: string | null;
+  spec: Record<string, unknown>;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface SettingsPatch {
   claude_cmd?: string;
   ollama_local_url?: string;

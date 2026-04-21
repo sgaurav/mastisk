@@ -470,3 +470,108 @@ def _fts_escape(q: str) -> str:
         return f'"{q.strip()}"' if q.strip() else "NULL"
     # Quote each term, OR-join. FTS5 is case-insensitive.
     return " OR ".join(f'"{t}"' for t in terms)
+
+
+# ─────────────────────────────── Article artifacts ───────────────────────────────
+
+def list_artifacts(conn: sqlite3.Connection, article_id: str) -> list[dict]:
+    return [
+        dict(r)
+        for r in conn.execute(
+            """SELECT id, article_id, kind, title, description, spec_json,
+                      created_by, created_at, updated_at
+               FROM article_artifacts
+               WHERE article_id = ?
+               ORDER BY created_at ASC, id ASC""",
+            (article_id,),
+        )
+    ]
+
+
+def get_artifact(conn: sqlite3.Connection, artifact_id: int) -> dict | None:
+    row = conn.execute(
+        """SELECT id, article_id, kind, title, description, spec_json,
+                  created_by, created_at, updated_at
+           FROM article_artifacts WHERE id = ?""",
+        (artifact_id,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def create_artifact(
+    conn: sqlite3.Connection,
+    *,
+    article_id: str,
+    kind: str,
+    title: str,
+    description: str | None,
+    spec_json: str,
+    created_by: str | None,
+) -> dict:
+    """Insert an artifact and return the fresh row.
+
+    ``spec_json`` here is already a JSON string — the route layer serializes.
+    Re-queries by lastrowid so the caller sees DB-generated timestamps.
+    """
+    cur = conn.execute(
+        """INSERT INTO article_artifacts
+             (article_id, kind, title, description, spec_json, created_by)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (article_id, kind, title, description, spec_json, created_by),
+    )
+    new_id = cur.lastrowid or 0
+    row = get_artifact(conn, new_id)
+    if row is None:
+        # Should be impossible right after a successful insert, but fail loud.
+        raise RuntimeError(f"failed to read back artifact {new_id} after insert")
+    return row
+
+
+def update_artifact(
+    conn: sqlite3.Connection,
+    artifact_id: int,
+    *,
+    kind: str | None = None,
+    title: str | None = None,
+    description: str | None = None,
+    spec_json: str | None = None,
+) -> dict | None:
+    """Patch an artifact — only non-None fields are updated. Always bumps
+    ``updated_at``. Returns the fresh row, or None if no row matched.
+
+    Note: ``description=None`` means "don't touch" (not "clear to NULL"),
+    to keep the PATCH semantics sane. Clearing a description isn't a use
+    case we need yet; add a sentinel if it ever becomes one.
+    """
+    sets: list[str] = []
+    params: list[Any] = []
+    if kind is not None:
+        sets.append("kind = ?")
+        params.append(kind)
+    if title is not None:
+        sets.append("title = ?")
+        params.append(title)
+    if description is not None:
+        sets.append("description = ?")
+        params.append(description)
+    if spec_json is not None:
+        sets.append("spec_json = ?")
+        params.append(spec_json)
+    if not sets:
+        # Nothing to patch — return the current row (or None) so callers
+        # can 404 on missing without a second query.
+        return get_artifact(conn, artifact_id)
+    sets.append("updated_at = CURRENT_TIMESTAMP")
+    params.append(artifact_id)
+    cur = conn.execute(
+        f"UPDATE article_artifacts SET {', '.join(sets)} WHERE id = ?",
+        params,
+    )
+    if cur.rowcount == 0:
+        return None
+    return get_artifact(conn, artifact_id)
+
+
+def delete_artifact(conn: sqlite3.Connection, artifact_id: int) -> bool:
+    cur = conn.execute("DELETE FROM article_artifacts WHERE id = ?", (artifact_id,))
+    return (cur.rowcount or 0) > 0
