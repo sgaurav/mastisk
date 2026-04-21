@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Article, View } from '../types';
 import { Icon } from './icons';
 import { api } from '../api';
+import { SynthesisFeedback } from './SynthesisFeedback';
 
 interface Props {
   article: Article;
@@ -98,6 +99,8 @@ export function ArticleView({ article, onAsk, onNavigate }: Props) {
           {article.aka.map((a, i) => <span key={i} className="alias">{a}{i < article.aka.length-1 ? ' ·' : ''}</span>)}
         </div>
       )}
+
+      {article.kind === 'Synthesis' && <SynthesisFeedback articleId={article.id}/>}
 
       <p className="art-summary" dangerouslySetInnerHTML={{ __html: article.summary }}/>
 

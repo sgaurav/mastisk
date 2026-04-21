@@ -575,3 +575,246 @@ def update_artifact(
 def delete_artifact(conn: sqlite3.Connection, artifact_id: int) -> bool:
     cur = conn.execute("DELETE FROM article_artifacts WHERE id = ?", (artifact_id,))
     return (cur.rowcount or 0) > 0
+
+
+# ─────────────────────────────── Synthesis feedback (UI side) ───────────────────────────────
+#
+# Helpers for the accept/discard affordance on Synthesis articles. The Synthesizer
+# agent writes rows to ``synthesis_runs`` with ``user_accepted IS NULL`` (pending);
+# the UI flips that to 1 (accepted) or 0 (rejected) and stores optional free-text
+# feedback that a future prompt loop can replay as few-shot material.
+#
+# Kept separate from the agent-side helpers (list_graph_edges, record_synthesis_run,
+# etc.) so the two tasks can land without touching the same lines.
+
+
+def _row_to_synthesis_run(row: sqlite3.Row) -> dict:
+    """Convert a synthesis_runs row into the API-facing dict.
+
+    Parses ``source_article_ids`` from JSON text to a list. If the column is
+    corrupt (shouldn't happen — writes always serialize a list), we surface an
+    empty list rather than crashing the whole endpoint.
+    """
+    d = dict(row)
+    raw = d.get("source_article_ids") or "[]"
+    try:
+        ids = json.loads(raw)
+        if not isinstance(ids, list):
+            ids = []
+    except json.JSONDecodeError:
+        ids = []
+    d["source_article_ids"] = ids
+    return d
+
+
+def list_pending_synthesis_runs(
+    conn: sqlite3.Connection, limit: int = 50
+) -> list[dict]:
+    """Runs awaiting a user decision, newest first. Drives the sidebar count."""
+    rows = conn.execute(
+        """SELECT id, cluster_hash, source_article_ids, draft_article_id,
+                  eval_score, eval_rationale, user_accepted, user_feedback,
+                  created_at, reviewed_at
+           FROM synthesis_runs
+           WHERE user_accepted IS NULL
+           ORDER BY created_at DESC
+           LIMIT ?""",
+        (limit,),
+    ).fetchall()
+    return [_row_to_synthesis_run(r) for r in rows]
+
+
+def get_synthesis_run_for_article(
+    conn: sqlite3.Connection, article_id: str
+) -> dict | None:
+    """Most recent run whose ``draft_article_id`` matches, or None.
+
+    Used by the ArticleView to decide whether to show the feedback strip.
+    A single article can theoretically be the draft for multiple runs (re-runs
+    of the same cluster), so we pick the newest by created_at.
+    """
+    row = conn.execute(
+        """SELECT id, cluster_hash, source_article_ids, draft_article_id,
+                  eval_score, eval_rationale, user_accepted, user_feedback,
+                  created_at, reviewed_at
+           FROM synthesis_runs
+           WHERE draft_article_id = ?
+           ORDER BY created_at DESC
+           LIMIT 1""",
+        (article_id,),
+    ).fetchone()
+    return _row_to_synthesis_run(row) if row else None
+
+
+def mark_synthesis_accepted(conn: sqlite3.Connection, run_id: int) -> bool:
+    """Accept a pending run. Returns True iff a pending row flipped.
+
+    Guards on ``user_accepted IS NULL`` so a double-click or a race between
+    two tabs can't overwrite a prior decision.
+    """
+    cur = conn.execute(
+        """UPDATE synthesis_runs
+           SET user_accepted = 1,
+               reviewed_at = CURRENT_TIMESTAMP
+           WHERE id = ? AND user_accepted IS NULL""",
+        (run_id,),
+    )
+    return (cur.rowcount or 0) > 0
+
+
+def mark_synthesis_rejected(
+    conn: sqlite3.Connection, run_id: int, feedback: str | None
+) -> bool:
+    """Reject a pending run, optionally recording user feedback text.
+
+    Empty/whitespace-only feedback is stored as NULL — the Synthesizer's
+    future few-shot pass only wants substantive rejection reasons.
+    """
+    clean = feedback.strip() if isinstance(feedback, str) else None
+    cur = conn.execute(
+        """UPDATE synthesis_runs
+           SET user_accepted = 0,
+               user_feedback = ?,
+               reviewed_at = CURRENT_TIMESTAMP
+           WHERE id = ? AND user_accepted IS NULL""",
+        (clean or None, run_id),
+    )
+    return (cur.rowcount or 0) > 0
+
+# ─────────────────────────────── Synthesizer ───────────────────────────────
+
+def list_graph_edges(conn: sqlite3.Connection) -> list[tuple[str, str, float]]:
+    """Return every (from, to, weight) edge in ``links``.
+
+    Used by the Synthesizer's Personalized PageRank pass to build an adjacency
+    matrix. We return raw tuples (not dicts) because PPR only needs the three
+    columns and tuple unpacking is faster in the inner loop.
+    """
+    return [
+        (r["from_article"], r["to_article"], float(r["weight"] or 0.5))
+        for r in conn.execute(
+            "SELECT from_article, to_article, weight FROM links"
+        )
+    ]
+
+
+def recent_seed_articles(
+    conn: sqlite3.Connection, *, hours: int = 48, limit: int = 10
+) -> list[dict]:
+    """Articles updated within the last ``hours`` hours, most-recent first.
+
+    Used as PPR seeds. Capped at ``limit`` — if more than 10 articles churned
+    in the window, we only seed from the freshest 10 to keep the spread
+    focused (otherwise the random walk diffuses uniformly and the top-K is
+    meaningless). 'Synthesis' kind is excluded from seeds — we don't want to
+    chain-synthesise off our own output.
+    """
+    return [
+        dict(r)
+        for r in conn.execute(
+            """SELECT id, title, kind, updated_at
+               FROM articles
+               WHERE updated_at > datetime('now', ?)
+                 AND kind != 'Synthesis'
+               ORDER BY updated_at DESC LIMIT ?""",
+            (f"-{int(hours)} hours", int(limit)),
+        )
+    ]
+
+
+def record_synthesis_run(
+    conn: sqlite3.Connection,
+    *,
+    cluster_hash: str,
+    source_article_ids: list[str],
+    draft_article_id: str | None,
+    eval_score: float | None,
+    eval_rationale: str | None,
+    prompt_version: int = 1,
+) -> int:
+    """Insert a synthesis_runs row. Returns the new row id.
+
+    user_accepted is left NULL — the accept/discard UI layer sets it later.
+    We always record the row even on low scores so repeat suppression works
+    (cluster_hash check skips re-synthesising the same membership) and so
+    the user has a rejection trail to calibrate from.
+    """
+    cur = conn.execute(
+        """INSERT INTO synthesis_runs
+             (cluster_hash, source_article_ids, prompt_version,
+              draft_article_id, eval_score, eval_rationale)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (
+            cluster_hash,
+            json.dumps(sorted(source_article_ids)),
+            prompt_version,
+            draft_article_id,
+            eval_score,
+            eval_rationale,
+        ),
+    )
+    return cur.lastrowid or 0
+
+
+def find_recent_synthesis_for_hash(
+    conn: sqlite3.Connection, cluster_hash: str
+) -> dict | None:
+    """Return the most recent synthesis_runs row for a given cluster_hash.
+
+    The Synthesizer checks this before drafting: if we already ran on this
+    exact membership AND no member has been updated since, skip — nothing's
+    changed to warrant a fresh synthesis.
+    """
+    row = conn.execute(
+        """SELECT id, cluster_hash, source_article_ids, draft_article_id,
+                  eval_score, eval_rationale, created_at
+           FROM synthesis_runs
+           WHERE cluster_hash = ?
+           ORDER BY created_at DESC LIMIT 1""",
+        (cluster_hash,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def accepted_synthesis_examples(
+    conn: sqlite3.Connection, *, limit: int = 3
+) -> list[dict]:
+    """Most recent user-accepted synthesis drafts. Used as positive few-shot
+    exemplars in the draft prompt. Joins into articles so we get the title
+    + body the user actually kept.
+    """
+    return [
+        dict(r)
+        for r in conn.execute(
+            """SELECT sr.id, sr.draft_article_id, a.title, a.summary, a.body_md,
+                      sr.eval_score, sr.created_at
+               FROM synthesis_runs sr
+               JOIN articles a ON a.id = sr.draft_article_id
+               WHERE sr.user_accepted = 1 AND sr.draft_article_id IS NOT NULL
+               ORDER BY sr.reviewed_at DESC, sr.created_at DESC
+               LIMIT ?""",
+            (int(limit),),
+        )
+    ]
+
+
+def rejected_synthesis_examples(
+    conn: sqlite3.Connection, *, limit: int = 2
+) -> list[dict]:
+    """Most recent user-rejected synthesis drafts with feedback. Used as
+    negative few-shot exemplars. Drafts may have been deleted post-rejection,
+    so we LEFT JOIN and tolerate missing article rows.
+    """
+    return [
+        dict(r)
+        for r in conn.execute(
+            """SELECT sr.id, sr.draft_article_id, a.title, a.summary, a.body_md,
+                      sr.eval_score, sr.user_feedback, sr.created_at
+               FROM synthesis_runs sr
+               LEFT JOIN articles a ON a.id = sr.draft_article_id
+               WHERE sr.user_accepted = 0
+               ORDER BY sr.reviewed_at DESC, sr.created_at DESC
+               LIMIT ?""",
+            (int(limit),),
+        )
+    ]

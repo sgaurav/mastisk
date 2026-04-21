@@ -244,3 +244,24 @@ export interface SettingsPatch {
   summarize_model_heavy?: string;
   budget?: BudgetValues;
 }
+
+export interface SynthesisRun {
+  id: number;
+  cluster_hash: string;
+  source_article_ids: string[];
+  draft_article_id: string | null;
+  eval_score: number | null;
+  eval_rationale: string | null;
+  user_accepted: 0 | 1 | null;
+  user_feedback: string | null;
+  created_at: string;
+  reviewed_at: string | null;
+}
+
+export interface SynthesisRunResponse {
+  run: SynthesisRun | null;
+}
+
+export interface PendingSynthesisResponse {
+  runs: SynthesisRun[];
+}

@@ -1,7 +1,7 @@
 import type {
   Article, ArticlePreview, Artifact, ArtifactKind, AskResponse, Digest, Feed,
-  FeedTick, AgentInfo, GraphData, Job, OpenQuestionsResponse, PinnedItem,
-  SettingsBundle, SettingsPatch, UserInfo, VaultItem,
+  FeedTick, AgentInfo, GraphData, Job, OpenQuestionsResponse, PendingSynthesisResponse,
+  PinnedItem, SettingsBundle, SettingsPatch, SynthesisRunResponse, UserInfo, VaultItem,
 } from './types';
 
 const BASE = '/api';
@@ -133,5 +133,20 @@ export const api = {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(patch),
+    }),
+
+  synthesisForArticle: (articleId: string) =>
+    j<SynthesisRunResponse>(`${BASE}/synthesis/by-article/${encodeURIComponent(articleId)}`),
+
+  pendingSynthesis: () => j<PendingSynthesisResponse>(`${BASE}/synthesis/pending`),
+
+  acceptSynthesis: (runId: number) =>
+    j<{ ok: boolean }>(`${BASE}/synthesis/${runId}/accept`, { method: 'POST' }),
+
+  rejectSynthesis: (runId: number, feedback?: string) =>
+    j<{ ok: boolean }>(`${BASE}/synthesis/${runId}/reject`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ feedback: feedback ?? null }),
     }),
 };

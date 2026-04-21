@@ -77,6 +77,23 @@ async def start_scheduler():
     except Exception as e:
         log.info("artifact-agent not scheduled: %s", e)
 
+    try:
+        from mastisk.agents.synthesizer import Synthesizer
+        # Synthesizer drains any queued synthesizer jobs each tick, then
+        # *optionally* attempts one spontaneous cross-article synthesis.
+        # First run 60s after boot so the corpus has had a moment to settle
+        # after whatever the Compiler did on startup — we don't want to
+        # synthesize on half-populated clusters.
+        sched.add_job(
+            Synthesizer().run_once, "interval",
+            seconds=Synthesizer.tick_seconds, id="synthesizer",
+            max_instances=1,
+            next_run_time=datetime.now(timezone.utc) + timedelta(seconds=60),
+            coalesce=True,
+        )
+    except Exception as e:
+        log.info("synthesizer not scheduled: %s", e)
+
     sched.start()
     log.info("scheduler started")
     return sched

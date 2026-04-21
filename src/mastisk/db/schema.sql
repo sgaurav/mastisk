@@ -168,6 +168,27 @@ CREATE TABLE IF NOT EXISTS lint_findings (
 );
 CREATE INDEX IF NOT EXISTS idx_lint_findings_open ON lint_findings(kind) WHERE resolved_at IS NULL;
 
+-- Synthesizer bookkeeping. One row per Draft→Critic pass. cluster_hash is a
+-- stable identifier for "these N article ids, in sorted order", so we can
+-- skip re-synthesising a cluster whose membership hasn't changed. Scores
+-- and rationale come from the Critic model; user_accepted / user_feedback
+-- are set later by the accept-or-discard UI layer.
+CREATE TABLE IF NOT EXISTS synthesis_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cluster_hash TEXT NOT NULL,
+  source_article_ids TEXT NOT NULL,      -- json array
+  prompt_version INTEGER NOT NULL DEFAULT 1,
+  draft_article_id TEXT REFERENCES articles(id) ON DELETE SET NULL,
+  eval_score REAL,                        -- 1.0-5.0
+  eval_rationale TEXT,
+  user_accepted INTEGER,                  -- null = pending, 1 = accepted, 0 = rejected
+  user_feedback TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  reviewed_at DATETIME
+);
+CREATE INDEX IF NOT EXISTS idx_synthesis_runs_hash ON synthesis_runs(cluster_hash);
+CREATE INDEX IF NOT EXISTS idx_synthesis_runs_pending ON synthesis_runs(user_accepted) WHERE user_accepted IS NULL;
+
 -- Triggers: keep external-content FTS in sync
 CREATE TRIGGER IF NOT EXISTS articles_ai AFTER INSERT ON articles BEGIN
   INSERT INTO articles_fts(rowid, title, summary, body_md)
