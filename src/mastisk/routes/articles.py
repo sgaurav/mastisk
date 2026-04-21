@@ -23,6 +23,31 @@ def get_article(article_id: str):
         return art
 
 
+@router.get("/articles/{article_id}/preview")
+def get_article_preview(article_id: str):
+    """Lightweight preview for wiki-link hover cards.
+
+    One SELECT against ``articles`` — id/kind/title/summary only. No sections,
+    related, or sources. Returns ``exists: false`` for unknown ids rather than
+    404-ing so the client doesn't have to distinguish network failures from
+    "this slug isn't compiled yet" (the common state right now).
+    """
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT id, kind, title, summary FROM articles WHERE id = ?",
+            (article_id,),
+        ).fetchone()
+        if not row:
+            return {"id": article_id, "exists": False}
+        return {
+            "id": row["id"],
+            "kind": row["kind"],
+            "title": row["title"],
+            "summary": row["summary"] or "",
+            "exists": True,
+        }
+
+
 @router.get("/sidebar")
 def sidebar():
     with connect() as conn:

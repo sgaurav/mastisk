@@ -990,3 +990,99 @@ a { color: inherit; }
 @media (max-width: 700px) {
   .settings-row { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ---------- wiki-link hover preview ---------- */
+.wiki-hover-card {
+  position: fixed;
+  max-width: 280px;
+  width: max-content;
+  background: var(--bg-card);
+  border: 1px solid var(--line);
+  border-radius: var(--rad);
+  box-shadow: var(--shadow-md);
+  padding: 12px 14px;
+  z-index: 120;
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--fg);
+  pointer-events: auto;
+  animation: wiki-hover-in 120ms ease-out;
+}
+@keyframes wiki-hover-in {
+  from { opacity: 0; transform: translateY(-2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.wiki-hover-card.flipped { /* reserved for future above-flip-specific tweaks */ }
+
+.wh-kind-row {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 6px;
+  font-family: var(--mono); font-size: 10px;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--fg-faint);
+}
+.wh-kind-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 7px; border-radius: 4px;
+  background: var(--bg-sunk);
+  border: 1px solid var(--line-soft);
+  color: var(--fg-mute);
+  font-weight: 500;
+}
+.wh-kind-badge.missing {
+  color: var(--fg-faint);
+  border-style: dashed;
+}
+.wh-kind-badge.loading {
+  width: 56px; height: 14px;
+  background: var(--bg-sunk);
+  border-style: dashed;
+}
+.wh-kind-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--kind-concept);
+}
+.wh-kind-badge.entity .wh-kind-dot { background: var(--kind-entity); }
+.wh-kind-badge.source .wh-kind-dot { background: var(--kind-source); }
+.wh-kind-badge.synthesis .wh-kind-dot { background: var(--kind-synth); }
+
+.wh-slug {
+  font-family: var(--mono); font-size: 10px;
+  color: var(--fg-faint);
+  max-width: 170px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.wh-title {
+  font-family: var(--serif);
+  font-size: 15px; font-weight: 600; line-height: 1.3;
+  color: var(--fg);
+  margin-bottom: 6px;
+  text-wrap: balance;
+}
+.wh-summary {
+  font-family: var(--serif);
+  font-size: 13px; line-height: 1.5;
+  color: var(--fg-mute);
+  /* clamp long summaries so the card stays readable */
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.wh-summary em { font-style: italic; color: var(--fg); }
+
+.wh-missing-msg {
+  font-family: var(--serif);
+  font-size: 12px; line-height: 1.5;
+  color: var(--fg-mute);
+  margin-top: 4px;
+}
+
+/* skeletons for loading state */
+.wh-title-skel, .wh-summary-skel {
+  background: var(--bg-sunk);
+  border-radius: 4px;
+}
+.wh-title-skel { height: 14px; width: 70%; margin-bottom: 8px; }
+.wh-summary-skel { height: 36px; width: 100%; }

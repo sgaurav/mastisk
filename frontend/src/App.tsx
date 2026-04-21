@@ -20,6 +20,7 @@ import { OpenQuestionsView } from './components/OpenQuestionsView';
 import { QueueView } from './components/QueueView';
 import { SettingsView } from './components/SettingsView';
 import { SystemCheckView } from './components/SystemCheckView';
+import { WikiLinkHoverProvider } from './components/WikiLinkHover';
 
 export function App() {
   const [theme, setTheme] = useState<'light' | 'dark'>(
@@ -158,6 +159,7 @@ export function App() {
       )}
 
       <AskDrawer open={askOpen} ctx={askCtx} onClose={() => setAskOpen(false)}/>
+      <WikiLinkHoverProvider/>
     </div>
   );
 }

@@ -19,6 +19,10 @@ export interface SourceRow {
   date: string;
 }
 
+export type ArticlePreview =
+  | { id: string; exists: true; kind: ArticleKind; title: string; summary: string }
+  | { id: string; exists: false };
+
 export interface Article {
   id: string;
   kind: ArticleKind;

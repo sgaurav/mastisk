@@ -1,5 +1,5 @@
 import type {
-  Article, AskResponse, Digest, Feed, FeedTick, AgentInfo,
+  Article, ArticlePreview, AskResponse, Digest, Feed, FeedTick, AgentInfo,
   GraphData, Job, OpenQuestionsResponse, PinnedItem, SettingsBundle,
   SettingsPatch, UserInfo, VaultItem,
 } from './types';
@@ -53,6 +53,8 @@ export const api = {
   }>(`${BASE}/stats/ping-bridges`, { method: 'POST' }),
 
   article: (id: string) => j<Article>(`${BASE}/articles/${id}`),
+
+  articlePreview: (id: string) => j<ArticlePreview>(`${BASE}/articles/${id}/preview`),
 
   digest: (date?: string) =>
     j<Digest>(date ? `${BASE}/digest?date=${encodeURIComponent(date)}` : `${BASE}/digest`),
