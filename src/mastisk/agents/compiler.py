@@ -20,6 +20,10 @@ from mastisk.paths import vault_dir
 
 log = logging.getLogger("mastisk.compiler")
 
+# Extracts (slug, label) pairs from body HTML so we can know what Claude
+# referenced and stub in any targets that don't have their own article yet.
+LINK_RE = re.compile(r'<span class="link"\s+data-target="([^"]+)"[^>]*>([^<]*)</span>')
+
 SCHEMA_MD = """
 Return a single JSON object in a ```json``` fenced block, matching this shape:
 
@@ -96,10 +100,12 @@ class Compiler(Agent):
 
         raw_text = Path(src["raw_path"]).read_text() if src["raw_path"] else (src["title"] or "")
         identity = self.load_identity()
+        registry = self._known_articles_block()
 
         prompt = (
             f"You are Mastisk's Compiler. Transform the raw source below into a wiki article.\n\n"
             f"{identity}\n\n"
+            f"{registry}\n\n"
             f"# Raw source\nTitle: {src['title']}\nURL: {src['url']}\nKind: {src['kind']}\n\n"
             f"{raw_text[:8000]}\n\n"
             f"{SCHEMA_MD}"
@@ -135,10 +141,42 @@ class Compiler(Agent):
         with connect() as conn:
             return conn.execute("SELECT 1 FROM articles WHERE id=?", (article_id,)).fetchone() is None
 
+    def _known_articles_block(self) -> str:
+        """Top-80-by-recency list of existing article ids + titles + kinds.
+
+        Injected into the Compiler prompt so Claude reuses canonical ids when
+        the raw source mentions a concept we already track. Prevents the
+        graph-disconnection issue where Claude coins a fresh slug for every
+        reference. If the vault has fewer than 80 articles, we include them all.
+        """
+        with connect() as conn:
+            rows = conn.execute(
+                "SELECT id, title, kind FROM articles ORDER BY updated_at DESC LIMIT 80"
+            ).fetchall()
+        if not rows:
+            return (
+                "# Existing articles you can reference\n"
+                "(none yet — coin kebab-case ids; stub pages will be auto-created)"
+            )
+        lines = [f"- `{r['id']}` — {r['title']} ({r['kind']})" for r in rows]
+        body = "\n".join(lines)
+        return (
+            "# Existing articles you can reference\n"
+            'When writing `<span class="link" data-target="X">` use the exact id '
+            "from this list whenever the concept matches. If the concept is new, "
+            "coin a kebab-case id — it'll auto-become a stub article.\n\n"
+            f"{body}"
+        )
+
     def _persist_article(self, data: dict, *, source_id: str) -> None:
         article_id = data["id"]
         slug = slugify(data["title"])[:80] or article_id
         vault_path = self._vault_path_for(data["kind"], slug)
+
+        # Harvest (target, label) pairs BEFORE persist so we can stub missing
+        # targets inside the same transaction — that way set_related's existence
+        # check sees freshly-created stubs.
+        link_refs = _extract_link_refs(data.get("sections", []))
 
         with connect() as conn, q.txn(conn):
             q.upsert_article(conn, {
@@ -155,6 +193,13 @@ class Compiler(Agent):
                 "vault_path": str(vault_path),
             })
             q.replace_sections(conn, article_id, data.get("sections", []))
+            # Stub any body-referenced targets that don't have their own article
+            # yet. This happens before set_related so related-link reconciliation
+            # sees the stubs. Self-links are skipped.
+            for target_id, display_label in link_refs.items():
+                if target_id == article_id:
+                    continue
+                q.ensure_stub_article(conn, id=target_id, title=display_label, kind="Entity")
             q.set_related(conn, article_id, data.get("related", []))
             conn.execute(
                 "INSERT OR IGNORE INTO article_sources (article_id, source_id) VALUES (?, ?)",
@@ -173,6 +218,33 @@ class Compiler(Agent):
             "Synthesis": "synthesis",
         }.get(kind, "concepts")
         return vault_dir() / folder / f"{slug}.md"
+
+
+def _extract_link_refs(sections: list[dict]) -> dict[str, str]:
+    """Walk section bodies and return {target_slug: best_display_label}.
+
+    If the same target appears with multiple labels across sections, we keep
+    the most common one (ties broken by shortest label, then alphabetical) so
+    the stub title reads naturally. This mirrors the tie-break used by the
+    backfill in ``repair-graph``.
+    """
+    from collections import Counter
+    per_slug: dict[str, Counter] = {}
+    for s in sections:
+        body = s.get("body", "") or ""
+        for m in LINK_RE.finditer(body):
+            slug = m.group(1).strip()
+            label = (m.group(2) or "").strip()
+            if not slug:
+                continue
+            per_slug.setdefault(slug, Counter())[label or slug] += 1
+    out: dict[str, str] = {}
+    for slug, counter in per_slug.items():
+        best_count = max(counter.values())
+        tied = [lbl for lbl, n in counter.items() if n == best_count]
+        tied.sort(key=lambda s: (len(s), s))
+        out[slug] = tied[0]
+    return out
 
 
 def _sections_to_md(sections: list[dict]) -> str:

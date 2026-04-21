@@ -818,3 +818,34 @@ def rejected_synthesis_examples(
             (int(limit),),
         )
     ]
+
+
+# ─────────────────────────────── Stubs (graph hygiene) ───────────────────────────────
+
+def ensure_stub_article(
+    conn: sqlite3.Connection, *, id: str, title: str, kind: str = "Entity"
+) -> bool:
+    """Create a placeholder article for a wiki-link target that doesn't exist yet.
+
+    The Compiler writes ``<span class="link" data-target="slug">`` references
+    before the target concept has its own source. Without a matching ``articles``
+    row, those links 404 and the graph stays empty. This inserts a minimal
+    stub so forwardlinks/backlinks resolve; a real Compiler pass later will
+    overwrite the body via ``upsert_article``.
+
+    Returns True iff a new row was inserted (False if the id already existed —
+    never overwrite a real article with a stub).
+    """
+    from slugify import slugify  # local import: only needed when creating stubs
+    existing = conn.execute("SELECT 1 FROM articles WHERE id = ?", (id,)).fetchone()
+    if existing:
+        return False
+    slug = (slugify(title)[:80] if title else id) or id
+    conn.execute(
+        """INSERT INTO articles (id, kind, title, slug, aka_json, summary, body_md,
+                                 confidence, reading_minutes, updated_by, vault_path)
+           VALUES (?, ?, ?, ?, '[]', ?, '', 0.0, 1, 'Compiler (stub)', NULL)""",
+        (id, kind, title or id, slug,
+         "Referenced by other articles — awaiting a dedicated source."),
+    )
+    return True

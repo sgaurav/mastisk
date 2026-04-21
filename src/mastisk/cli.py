@@ -537,6 +537,86 @@ def vault_path_cmd():
     console.print(str(vault_dir()))
 
 
+@app.command(name="repair-graph")
+def repair_graph_cmd(
+    dry_run: bool = typer.Option(
+        False, "--dry-run",
+        help="Report what would change without writing anything.",
+    ),
+):
+    """Backfill stub articles for dangling wiki links, then rebuild the links table.
+
+    Walks every article body for ``<span class="link" data-target="slug">LABEL</span>``
+    references. For each slug that isn't already an article, creates an Entity stub
+    titled from the most-common display label. Then calls Linter.repair_graph() to
+    populate the ``links`` table. Idempotent — a second run reports 0 new stubs.
+    """
+    import re
+    from collections import Counter, defaultdict
+    from mastisk.db import queries as q
+    from mastisk.db.queries import connect
+    from mastisk.agents.linter import Linter
+
+    _ensure_db()
+    LINK_RE = re.compile(
+        r'<span class="link"\s+data-target="([^"]+)"[^>]*>([^<]*)</span>'
+    )
+
+    # Gather (slug, label) pairs across all section bodies.
+    labels_by_slug: dict[str, Counter[str]] = defaultdict(Counter)
+    with connect() as conn:
+        for r in conn.execute("SELECT body FROM article_sections"):
+            body = r["body"] or ""
+            if "data-target=" not in body:
+                continue
+            for m in LINK_RE.finditer(body):
+                slug = m.group(1).strip()
+                label = (m.group(2) or "").strip() or slug
+                if slug:
+                    labels_by_slug[slug][label] += 1
+        known_ids = {r["id"] for r in conn.execute("SELECT id FROM articles")}
+
+    missing = [s for s in labels_by_slug if s not in known_ids]
+    # Pick title per slug: prefer a label whose slug-form matches the target
+    # exactly (so `agent-architectures` picks "agent architectures" over a
+    # shorter one-word "agent"). Then most-common, ties → shortest, alphabetical.
+    from slugify import slugify
+    chosen: dict[str, str] = {}
+    for slug in missing:
+        counter = labels_by_slug[slug]
+        matching = [lbl for lbl in counter if slugify(lbl) == slug]
+        if matching:
+            matching.sort(key=lambda s: (-counter[s], len(s), s))
+            chosen[slug] = matching[0]
+            continue
+        top_n = max(counter.values())
+        tied = [lbl for lbl, n in counter.items() if n == top_n]
+        tied.sort(key=lambda s: (len(s), s))
+        chosen[slug] = tied[0]
+
+    if dry_run:
+        console.print(
+            f"[dim]dry run:[/dim] would create [bold]{len(chosen)}[/bold] stub "
+            f"article(s); link rows would be reinserted by the linter pass."
+        )
+        for slug, title in sorted(chosen.items())[:20]:
+            console.print(f"  [cyan]{slug}[/cyan]  →  {title!r}")
+        if len(chosen) > 20:
+            console.print(f"  [dim]…and {len(chosen) - 20} more[/dim]")
+        return
+
+    created = 0
+    with connect() as conn, q.txn(conn):
+        for slug, title in chosen.items():
+            if q.ensure_stub_article(conn, id=slug, title=title, kind="Entity"):
+                created += 1
+
+    inserted = Linter.repair_graph()
+    console.print(
+        f"[green]Created {created} stub article(s); inserted {inserted} link row(s).[/green]"
+    )
+
+
 @app.command()
 def backup(output_dir: Optional[Path] = typer.Option(None, "--output-dir", "-o")):
     """Tar the DB + config to a timestamped archive."""
