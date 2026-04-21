@@ -24,7 +24,7 @@ def is_available() -> bool:
 
 async def transcribe(
     audio_path: Path,
-    model: str = "mlx-community/whisper-large-v3-turbo",
+    model: str = "mlx-community/whisper-medium",
 ) -> str:
     """Transcribe an audio file with mlx-whisper. Returns plain text.
 
