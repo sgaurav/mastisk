@@ -44,8 +44,9 @@ mastisk-backup-*.tar.gz
 *.tar.gz
 
 # Per-user Claude Code settings (the project file .claude/settings.json CAN be
-# committed; the local override should not)
+# committed; the local override + runtime state should not)
 .claude/settings.local.json
+.claude/scheduled_tasks.lock
 
 # macOS
 .DS_Store

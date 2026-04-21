@@ -31,16 +31,17 @@ def digest(date: str | None = None):
             "SELECT COUNT(*) AS n FROM sources WHERE DATE(fetched_at) = ?",
             (d_iso,),
         ).fetchone()["n"]
+        # Counters and threads exclude stub articles: those are placeholders
+        # created by the Compiler when a wiki-link target has no source yet,
+        # and they'd otherwise pollute "pages touched" and the threads list.
+        # Stubs are detected by empty body_md (real articles always have one).
         pages_today = conn.execute(
-            "SELECT COUNT(*) AS n FROM articles WHERE DATE(updated_at) = ?",
+            "SELECT COUNT(*) AS n FROM articles WHERE DATE(updated_at) = ? AND body_md != ''",
             (d_iso,),
         ).fetchone()["n"]
-        # "New concepts this week" stays anchored on the requested day — the
-        # week is the 7-day window ending on that date, so the counter makes
-        # sense when you're time-travelling through old digests.
         new_concepts = conn.execute(
             """SELECT COUNT(*) AS n FROM articles
-               WHERE kind='Concept'
+               WHERE kind='Concept' AND body_md != ''
                  AND DATE(created_at) >= DATE(?, '-7 day')
                  AND DATE(created_at) <= DATE(?)""",
             (d_iso, d_iso),
@@ -49,10 +50,9 @@ def digest(date: str | None = None):
             "SELECT COUNT(*) AS n FROM article_sections WHERE kind='open'"
         ).fetchone()["n"]
 
-        # Threads: the articles updated on this date
         thread_rows = conn.execute(
             """SELECT id, title, summary, kind FROM articles
-               WHERE DATE(updated_at) = ?
+               WHERE DATE(updated_at) = ? AND body_md != ''
                ORDER BY updated_at DESC LIMIT 5""",
             (d_iso,),
         ).fetchall()
@@ -95,13 +95,13 @@ def digest(date: str | None = None):
         # can disable the arrows.
         prev_row = conn.execute(
             """SELECT DATE(updated_at) AS d FROM articles
-               WHERE DATE(updated_at) < ?
+               WHERE DATE(updated_at) < ? AND body_md != ''
                ORDER BY updated_at DESC LIMIT 1""",
             (d_iso,),
         ).fetchone()
         next_row = conn.execute(
             """SELECT DATE(updated_at) AS d FROM articles
-               WHERE DATE(updated_at) > ?
+               WHERE DATE(updated_at) > ? AND body_md != ''
                ORDER BY updated_at ASC LIMIT 1""",
             (d_iso,),
         ).fetchone()

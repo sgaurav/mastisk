@@ -26,11 +26,11 @@ export function QueueView() {
         Failed jobs stay here until you clear or retry them.
       </p>
 
-      <div className="counters" style={{gridTemplateColumns:'repeat(4,1fr)'}}>
-        <div className="counter"><div className="v">{by.queued.length}</div><div className="l">Queued</div></div>
-        <div className="counter"><div className="v">{by.running.length}</div><div className="l">Running</div></div>
-        <div className="counter"><div className="v">{by.done.length}</div><div className="l">Done</div></div>
-        <div className="counter"><div className="v">{by.failed.length}</div><div className="l">Failed</div></div>
+      <div className="counters">
+        <Counter n={by.queued.length} label="Queued" />
+        <Counter n={by.running.length} label="Running" variant={by.running.length > 0 ? 'accent' : undefined} />
+        <Counter n={by.done.length} label="Done" />
+        <Counter n={by.failed.length} label="Failed" variant={by.failed.length > 0 ? 'alert' : undefined} />
       </div>
 
       {jobs.length === 0 ? (
@@ -46,16 +46,26 @@ export function QueueView() {
   );
 }
 
+function Counter({ n, label, variant }: { n: number; label: string; variant?: 'accent' | 'alert' }) {
+  const cls = ['counter'];
+  if (n === 0) cls.push('is-empty');
+  if (variant === 'accent') cls.push('is-accent');
+  if (variant === 'alert') cls.push('is-alert');
+  return <div className={cls.join(' ')}><div className="v">{n}</div><div className="l">{label}</div></div>;
+}
+
 function QueueRow({ job }: { job: Job }) {
-  const title = job.detail.title ?? fallbackTitle(job);
+  const rawTitle = job.detail.title;
+  const title = rawTitle ?? fallbackTitle(job);
+  const isFallback = !rawTitle;
   const subtitle = job.detail.subtitle;
   const srcKind = job.detail.source_kind;
 
   return (
-    <div className="queue-row">
+    <div className={`queue-row s-${job.status}`}>
       <div className="queue-id">#{job.id}</div>
       <div className="queue-title">
-        <div className="queue-title-line" title={title}>{title}</div>
+        <div className={`queue-title-line${isFallback ? ' is-fallback' : ''}`} title={title}>{title}</div>
         <div className="queue-meta">
           <span className="queue-agent">{job.agent}</span>
           <span className="queue-sep">·</span>
@@ -65,8 +75,9 @@ function QueueRow({ job }: { job: Job }) {
         </div>
       </div>
       <div className="queue-end">
-        <span className="queue-status" style={{color: statusColor(job.status)}}>
-          {job.status}{job.attempts > 1 ? ` · retry ${job.attempts}` : ''}
+        <span className={`queue-status s-${job.status}`}>
+          {job.status}
+          {job.attempts > 1 && <span className="retry">· retry {job.attempts}</span>}
         </span>
         <span className="queue-time">{relativeTs(job.created_at)}</span>
       </div>
@@ -80,11 +91,8 @@ function QueueRow({ job }: { job: Job }) {
 }
 
 function fallbackTitle(j: Job): string {
-  return j.agent === 'scout' ? 'Polling feeds' : `${j.agent} · ${j.kind}`;
-}
-
-function statusColor(s: Job['status']): string {
-  return { queued: 'var(--fg-mute)', running: 'var(--accent)', done: 'var(--kind-source)', failed: '#c53030' }[s];
+  if (j.agent === 'scout') return 'Polling feeds';
+  return 'Untitled task';
 }
 
 function relativeTs(iso: string): string {
