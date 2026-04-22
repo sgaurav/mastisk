@@ -62,3 +62,81 @@ def test_notes_dir_helpers(vault_tmp):
     assert notes_daily_dir().exists()
     assert notes_dir() == vault_tmp / "_notes"
     assert notes_inbox_dir() == vault_tmp / "_notes" / "inbox"
+
+
+def test_insert_note_basic(db):
+    from mastisk.db.queries import insert_note
+    note_id = insert_note(
+        db,
+        slug="143522-hello-world",
+        path="_notes/inbox/143522-hello-world.md",
+        body="hello world\n\nthis is a note",
+        source="cli",
+        created_at=datetime(2026, 4, 21, 14, 35, 22),
+    )
+    assert isinstance(note_id, int) and note_id > 0
+    row = db.execute("SELECT * FROM notes WHERE id = ?", (note_id,)).fetchone()
+    assert row["slug"] == "143522-hello-world"
+    assert row["classification"] is None
+    assert row["escalation_state"] == "none"
+    assert row["body_sha256"] != ""
+
+
+def test_insert_note_slug_collision_appends_suffix(db):
+    from mastisk.db.queries import insert_note
+    ts = datetime(2026, 4, 21, 14, 35, 22)
+    id1 = insert_note(db, slug="143522-foo", path="_notes/inbox/143522-foo.md",
+                      body="first", source="cli", created_at=ts)
+    id2 = insert_note(db, slug="143522-foo", path="_notes/inbox/143522-foo-2.md",
+                      body="second", source="cli", created_at=ts)
+    slug1 = db.execute("SELECT slug FROM notes WHERE id=?", (id1,)).fetchone()["slug"]
+    slug2 = db.execute("SELECT slug FROM notes WHERE id=?", (id2,)).fetchone()["slug"]
+    assert slug1 == "143522-foo"
+    assert slug2 == "143522-foo-2"
+
+
+def test_get_note_returns_row(db):
+    from mastisk.db.queries import insert_note, get_note
+    ts = datetime(2026, 4, 21, 14, 35, 22)
+    note_id = insert_note(db, slug="a", path="_notes/inbox/a.md",
+                          body="x", source="pwa", created_at=ts)
+    row = get_note(db, note_id)
+    assert row is not None
+    assert row["slug"] == "a"
+    assert get_note(db, 99999) is None
+
+
+def test_list_notes_ordering_and_limit(db):
+    from mastisk.db.queries import insert_note, list_notes
+    for i in range(5):
+        insert_note(db, slug=f"n{i}", path=f"_notes/inbox/n{i}.md",
+                    body=f"body {i}", source="cli",
+                    created_at=datetime(2026, 4, 21, 14, 35, i))
+    rows = list_notes(db, limit=3)
+    assert len(rows) == 3
+    assert rows[0]["slug"] == "n4"
+    assert rows[-1]["slug"] == "n2"
+
+
+def test_list_notes_excludes_deleted(db):
+    from mastisk.db.queries import insert_note, soft_delete_note, list_notes
+    ts = datetime(2026, 4, 21, 14, 35, 22)
+    id1 = insert_note(db, slug="keep", path="_notes/inbox/keep.md",
+                      body="k", source="cli", created_at=ts)
+    id2 = insert_note(db, slug="drop", path="_notes/inbox/drop.md",
+                      body="d", source="cli", created_at=ts)
+    soft_delete_note(db, id2)
+    slugs = [r["slug"] for r in list_notes(db)]
+    assert "keep" in slugs
+    assert "drop" not in slugs
+
+
+def test_soft_delete_sets_tombstone(db):
+    from mastisk.db.queries import insert_note, soft_delete_note, get_note
+    ts = datetime(2026, 4, 21, 14, 35, 22)
+    note_id = insert_note(db, slug="x", path="_notes/inbox/x.md",
+                          body="x", source="cli", created_at=ts)
+    soft_delete_note(db, note_id)
+    row = get_note(db, note_id)
+    assert row is not None
+    assert row["deleted_at"] is not None

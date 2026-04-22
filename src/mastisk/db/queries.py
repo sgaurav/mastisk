@@ -902,3 +902,73 @@ def ensure_stub_article(
          "Referenced by other articles — awaiting a dedicated source."),
     )
     return True
+
+
+# ─────────────────────────────── Notes ───────────────────────────────
+
+def insert_note(
+    conn: sqlite3.Connection,
+    *,
+    slug: str,
+    path: str,
+    body: str,
+    source: str,
+    created_at: datetime,
+) -> int:
+    """Insert a new note. On UNIQUE-slug collision, retry with -2, -3, ... up to -99.
+
+    The caller has already picked a slug based on timestamp + first-line slugify;
+    collisions are vanishingly rare (same-second capture). See spec §5.
+    """
+    import hashlib
+    body_sha = hashlib.sha256(body.encode("utf-8")).hexdigest()
+    base_slug = slug
+    for attempt in range(1, 100):
+        try_slug = base_slug if attempt == 1 else f"{base_slug}-{attempt}"
+        try_path = path if attempt == 1 else path.replace(f"{base_slug}.md", f"{base_slug}-{attempt}.md")
+        try:
+            cur = conn.execute(
+                """INSERT INTO notes (slug, path, body, body_sha256, source, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (try_slug, try_path, body, body_sha, source, created_at.isoformat()),
+            )
+            return cur.lastrowid or 0
+        except sqlite3.IntegrityError as e:
+            msg = str(e).lower()
+            if "unique" in msg and ("slug" in msg or "path" in msg):
+                continue
+            raise
+    raise RuntimeError(f"insert_note: exhausted slug collision retries for {base_slug!r}")
+
+
+def get_note(conn: sqlite3.Connection, note_id: int) -> dict | None:
+    row = conn.execute("SELECT * FROM notes WHERE id = ?", (note_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def list_notes(
+    conn: sqlite3.Connection,
+    *,
+    limit: int = 50,
+    before_id: int | None = None,
+    classification: str | None = None,
+) -> list[dict]:
+    """List notes, newest first. Excludes tombstoned rows."""
+    q = "SELECT * FROM notes WHERE deleted_at IS NULL"
+    params: list[Any] = []
+    if before_id is not None:
+        q += " AND id < ?"
+        params.append(before_id)
+    if classification is not None:
+        q += " AND classification = ?"
+        params.append(classification)
+    q += " ORDER BY created_at DESC, id DESC LIMIT ?"
+    params.append(limit)
+    return [dict(r) for r in conn.execute(q, params).fetchall()]
+
+
+def soft_delete_note(conn: sqlite3.Connection, note_id: int) -> None:
+    conn.execute(
+        "UPDATE notes SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL",
+        (note_id,),
+    )
