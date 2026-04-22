@@ -55,6 +55,13 @@ export function Sidebar({ vault, pinned, user, currentView, currentArticle, onNa
       })}
       {/* Hand-coded extras (not in backend vault_tree yet) */}
       <div
+        className={`side-row ${currentView === 'notes' || currentView === 'note' ? 'active' : ''}`}
+        onClick={() => onNavigate('notes')}
+      >
+        <span className="glyph">✎</span>
+        <span className="label">Notes</span>
+      </div>
+      <div
         className={`side-row ${currentView === 'roundtables' || currentView === 'roundtable' ? 'active' : ''}`}
         onClick={() => onNavigate('roundtables')}
       >
