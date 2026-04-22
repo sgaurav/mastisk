@@ -223,3 +223,57 @@ END;
 CREATE TRIGGER IF NOT EXISTS article_sources_ad AFTER DELETE ON article_sources BEGIN
   UPDATE articles SET sources_count = MAX(0, sources_count - 1) WHERE id = old.article_id;
 END;
+
+-- ─────────────────────────────── Notes ───────────────────────────────
+-- User-authored content. File in vault/_notes/ is the source of truth;
+-- this row is a derived index. See docs/superpowers/specs/2026-04-21-notes-subsystem-design.md
+
+CREATE TABLE IF NOT EXISTS notes (
+    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug                        TEXT UNIQUE NOT NULL,
+    path                        TEXT UNIQUE NOT NULL,
+    body                        TEXT NOT NULL,
+    body_sha256                 TEXT NOT NULL,
+    source                      TEXT NOT NULL,            -- 'pwa' | 'cli' | 'file'
+    created_at                  DATETIME NOT NULL,
+    classified_at               DATETIME,
+    classification              TEXT,
+    summary                     TEXT,
+    confidence                  REAL,
+    tags_json                   TEXT DEFAULT '[]',
+    escalation_state            TEXT NOT NULL DEFAULT 'none',
+    escalation_trigger          TEXT,
+    escalation_article_id       TEXT REFERENCES articles(id) ON DELETE SET NULL,
+    escalation_retry_count      INTEGER NOT NULL DEFAULT 0,
+    escalation_next_attempt_at  DATETIME,
+    deleted_at                  DATETIME
+);
+
+CREATE INDEX IF NOT EXISTS idx_notes_created_at         ON notes(created_at);
+CREATE INDEX IF NOT EXISTS idx_notes_classified_at      ON notes(classified_at);
+CREATE INDEX IF NOT EXISTS idx_notes_escalation_pending ON notes(escalation_state, escalation_next_attempt_at)
+    WHERE escalation_state IN ('pending', 'retrying');
+CREATE INDEX IF NOT EXISTS idx_notes_deleted_at         ON notes(deleted_at);
+
+CREATE TABLE IF NOT EXISTS note_links (
+    note_id     INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+    article_id  TEXT    NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+    rank        INTEGER NOT NULL,
+    PRIMARY KEY (note_id, article_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_note_links_article ON note_links(article_id);
+
+CREATE TABLE IF NOT EXISTS note_escalations (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    note_id         INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+    triggered_at    DATETIME NOT NULL,
+    trigger         TEXT NOT NULL,
+    result          TEXT NOT NULL,
+    stub_article_id TEXT REFERENCES articles(id) ON DELETE SET NULL,
+    error           TEXT,
+    model           TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_note_escalations_note         ON note_escalations(note_id);
+CREATE INDEX IF NOT EXISTS idx_note_escalations_triggered_at ON note_escalations(triggered_at);

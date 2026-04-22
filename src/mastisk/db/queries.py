@@ -56,6 +56,10 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "articles", "hero_image_url", "TEXT")
     _add_column_if_missing(conn, "sources", "hero_image_url", "TEXT")
     _add_column_if_missing(conn, "sources", "media_json", "TEXT")
+    _add_column_if_missing(
+        conn, "articles", "source_note_id",
+        "INTEGER REFERENCES notes(id) ON DELETE SET NULL",
+    )
 
 
 @contextmanager
