@@ -4,9 +4,10 @@ import type { Note, View } from '../types';
 
 interface Props {
   onNavigate: (view: View, id?: string) => void;
+  onCaptureNote: () => void;
 }
 
-export function NotesView({ onNavigate }: Props) {
+export function NotesView({ onNavigate, onCaptureNote }: Props) {
   const [notes, setNotes] = useState<Note[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -25,9 +26,19 @@ export function NotesView({ onNavigate }: Props) {
         <div className="view-h">Notes</div>
         <h1 className="view-title">No notes yet</h1>
         <p className="view-sub">
-          Hit the <kbd>+</kbd> in the titlebar, or run <code>mastisk note "your thought"</code>, or drop a
+          Hit <kbd>+</kbd> below or in the titlebar, or run <code>mastisk note "your thought"</code>, or drop a
           markdown file into <code>vault/_notes/inbox/</code>.
         </p>
+        <button
+          onClick={onCaptureNote}
+          style={{
+            padding: '8px 16px', fontSize: 14, marginTop: 12,
+            background: 'var(--accent, #cc4444)', color: '#fff',
+            border: 'none', borderRadius: 4, cursor: 'pointer',
+          }}
+        >
+          + new note
+        </button>
       </div>
     );
   }
@@ -35,7 +46,21 @@ export function NotesView({ onNavigate }: Props) {
   return (
     <div className="view">
       <div className="view-h">Notes</div>
-      <h1 className="view-title">{notes.length} {notes.length === 1 ? 'note' : 'notes'}</h1>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+        <h1 className="view-title" style={{ margin: 0 }}>
+          {notes.length} {notes.length === 1 ? 'note' : 'notes'}
+        </h1>
+        <button
+          onClick={onCaptureNote}
+          style={{
+            padding: '6px 12px', fontSize: 13,
+            background: 'var(--accent, #cc4444)', color: '#fff',
+            border: 'none', borderRadius: 4, cursor: 'pointer',
+          }}
+        >
+          + new note
+        </button>
+      </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
         {notes.map((n) => (
           <button

@@ -330,5 +330,17 @@ export const api = {
       fetch(`/api/repos/ideate/${slug}`, { method: 'POST' }).then(r => {
         if (!r.ok) throw new Error(`${r.status}`);
       }),
+
+    browse: (path?: string): Promise<{
+      path: string;
+      parent: string | null;
+      entries: { name: string; path: string; is_dir: boolean; is_git_repo: boolean }[];
+    }> => {
+      const qs = path ? `?path=${encodeURIComponent(path)}` : '';
+      return fetch(`/api/repos/browse${qs}`).then(async r => {
+        if (!r.ok) throw new Error(await r.text());
+        return r.json();
+      });
+    },
   },
 };

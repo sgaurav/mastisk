@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
-import type { View } from '../types';
+import type { BrowseEntry, View } from '../types';
 
 type Source = 'github' | 'local';
 
@@ -18,12 +18,21 @@ export function AddRepoModal({ open, onClose, onAdded, onNavigate }: Props) {
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Folder-picker state (only used when source === 'local')
+  const [browseOpen, setBrowseOpen] = useState(false);
+  const [browseState, setBrowseState] = useState<{
+    path: string; parent: string | null; entries: BrowseEntry[];
+  } | null>(null);
+  const [browseBusy, setBrowseBusy] = useState(false);
+
   useEffect(() => {
     if (open) {
       setSource('github');
       setValue('');
       setError(null);
       setBusy(false);
+      setBrowseOpen(false);
+      setBrowseState(null);
       setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [open]);
@@ -33,8 +42,27 @@ export function AddRepoModal({ open, onClose, onAdded, onNavigate }: Props) {
     if (!open) return;
     setValue('');
     setError(null);
+    setBrowseOpen(false);
+    setBrowseState(null);
     setTimeout(() => inputRef.current?.focus(), 0);
   }, [source, open]);
+
+  const loadBrowse = useCallback(async (path?: string) => {
+    setBrowseBusy(true);
+    try {
+      const data = await api.repos.browse(path);
+      setBrowseState(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'browse failed');
+    } finally {
+      setBrowseBusy(false);
+    }
+  }, []);
+
+  const openBrowser = () => {
+    setBrowseOpen(true);
+    void loadBrowse();  // start at ~
+  };
 
   const submit = async () => {
     const trimmed = value.trim();
@@ -118,20 +146,124 @@ export function AddRepoModal({ open, onClose, onAdded, onNavigate }: Props) {
         <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginBottom: 4, fontFamily: 'var(--mono)' }}>
           {source === 'github' ? 'GitHub slug' : 'Absolute path'}
         </div>
-        <input
-          ref={inputRef}
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') void submit(); if (e.key === 'Escape') onClose(); }}
-          disabled={busy}
-          placeholder={source === 'github' ? 'owner/repo' : '/Users/you/Code/someproj'}
-          style={{
-            width: '100%', boxSizing: 'border-box',
-            background: 'transparent', color: 'var(--fg)',
-            border: '1px solid var(--border)', borderRadius: 4,
-            padding: 8, fontFamily: 'var(--mono)', fontSize: 14,
-          }}
-        />
+        {source === 'local' ? (
+          <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+            <input
+              ref={inputRef}
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') void submit(); if (e.key === 'Escape') onClose(); }}
+              disabled={busy}
+              placeholder="/Users/you/Code/someproj"
+              style={{
+                flex: 1, boxSizing: 'border-box',
+                background: 'transparent', color: 'var(--fg)',
+                border: '1px solid var(--border)', borderRadius: 4,
+                padding: 8, fontFamily: 'var(--mono)', fontSize: 14,
+              }}
+            />
+            <button type="button" onClick={openBrowser} disabled={busy} title="Browse folders">
+              Browse
+            </button>
+          </div>
+        ) : (
+          <input
+            ref={inputRef}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') void submit(); if (e.key === 'Escape') onClose(); }}
+            disabled={busy}
+            placeholder="owner/repo"
+            style={{
+              width: '100%', boxSizing: 'border-box',
+              background: 'transparent', color: 'var(--fg)',
+              border: '1px solid var(--border)', borderRadius: 4,
+              padding: 8, fontFamily: 'var(--mono)', fontSize: 14,
+            }}
+          />
+        )}
+        {source === 'local' && browseOpen && (
+          <div
+            style={{
+              border: '1px solid var(--border)', borderRadius: 4,
+              marginBottom: 8, maxHeight: 320, display: 'flex', flexDirection: 'column',
+            }}
+          >
+            {/* Breadcrumb / up / "select this folder" */}
+            <div
+              style={{
+                padding: '6px 8px', borderBottom: '1px solid var(--border)',
+                display: 'flex', alignItems: 'center', gap: 6,
+                fontSize: 11, fontFamily: 'var(--mono)',
+              }}
+            >
+              <button
+                type="button"
+                disabled={!browseState?.parent || browseBusy}
+                onClick={() => browseState?.parent && void loadBrowse(browseState.parent)}
+                style={{ padding: '1px 6px' }}
+                title="Up one level"
+              >
+                ↑
+              </button>
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {browseState?.path ?? '…'}
+              </span>
+              <button
+                type="button"
+                disabled={!browseState || browseBusy}
+                onClick={() => {
+                  if (browseState) { setValue(browseState.path); setBrowseOpen(false); }
+                }}
+                title="Use this folder"
+              >
+                select
+              </button>
+              <button type="button" onClick={() => setBrowseOpen(false)} title="Close">
+                ✕
+              </button>
+            </div>
+            {/* Entry list */}
+            <div style={{ overflow: 'auto', padding: 4 }}>
+              {browseBusy ? (
+                <div style={{ padding: 8, fontSize: 12, color: 'var(--fg-faint)' }}>loading…</div>
+              ) : !browseState || browseState.entries.filter(e => e.is_dir).length === 0 ? (
+                <div style={{ padding: 8, fontSize: 12, color: 'var(--fg-faint)' }}>(no subdirectories)</div>
+              ) : (
+                browseState.entries
+                  .filter(e => e.is_dir)
+                  .map(e => (
+                    <button
+                      key={e.path}
+                      type="button"
+                      onClick={() => {
+                        if (e.is_git_repo) { setValue(e.path); setBrowseOpen(false); }
+                        else { void loadBrowse(e.path); }
+                      }}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        width: '100%', textAlign: 'left', padding: '4px 8px',
+                        background: 'transparent', border: 'none',
+                        fontSize: 13, cursor: 'pointer',
+                        fontFamily: 'var(--mono)', color: 'var(--fg)',
+                      }}
+                      title={e.is_git_repo ? 'git repo — click to select' : 'folder — click to open'}
+                    >
+                      <span>{e.is_git_repo ? '*' : ''}</span>
+                      <span style={{ flex: 1 }}>
+                        {e.name}
+                        {e.is_git_repo && (
+                          <span style={{ color: 'var(--accent, #cc4444)', marginLeft: 6, fontSize: 10 }}>
+                            [repo]
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                  ))
+              )}
+            </div>
+          </div>
+        )}
         {error && (
           <div
             style={{

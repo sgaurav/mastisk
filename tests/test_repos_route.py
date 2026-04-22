@@ -236,3 +236,77 @@ def test_ideate_by_slug_enqueues(client, db, tmp_path):
     r = client.post(f"/api/repos/ideate/{slug}")
     assert r.status_code == 202, r.text
     assert db.execute("SELECT 1 FROM jobs WHERE agent='github_ideator'").fetchone()
+
+
+def test_browse_defaults_to_home(client, monkeypatch, tmp_path):
+    """With no path param, browse starts at the user's home directory."""
+    import mastisk.routes.repos_route as rr
+    # Use a dedicated subdir as "home" so it isn't polluted by sibling fixtures
+    # (vault_tmp/data_tmp share the top-level tmp_path).
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(rr.Path, "home", classmethod(lambda cls: home))
+    (home / "subdir").mkdir()
+    (home / "file.txt").write_text("hi")
+
+    r = client.get("/api/repos/browse")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["path"] == str(home)
+    assert body["parent"] is None  # at home
+    names = [e["name"] for e in body["entries"]]
+    assert "subdir" in names
+    assert "file.txt" in names
+    # Dirs sort before files
+    assert body["entries"][0]["name"] == "subdir"
+
+
+def test_browse_respects_home_boundary(client, monkeypatch, tmp_path):
+    """Browsing outside the home dir returns 403."""
+    import mastisk.routes.repos_route as rr
+    monkeypatch.setattr(rr.Path, "home", classmethod(lambda cls: tmp_path))
+    r = client.get("/api/repos/browse?path=/etc")
+    assert r.status_code == 403
+    assert "home" in r.json()["detail"]
+
+
+def test_browse_flags_git_repos(client, monkeypatch, tmp_path):
+    import mastisk.routes.repos_route as rr
+    monkeypatch.setattr(rr.Path, "home", classmethod(lambda cls: tmp_path))
+    (tmp_path / "not-a-repo").mkdir()
+    repo = tmp_path / "my-repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+
+    r = client.get("/api/repos/browse")
+    body = r.json()
+    by_name = {e["name"]: e for e in body["entries"]}
+    assert by_name["not-a-repo"]["is_git_repo"] is False
+    assert by_name["my-repo"]["is_git_repo"] is True
+
+
+def test_browse_navigates_into_subdirs(client, monkeypatch, tmp_path):
+    import mastisk.routes.repos_route as rr
+    monkeypatch.setattr(rr.Path, "home", classmethod(lambda cls: tmp_path))
+    nested = tmp_path / "outer" / "inner"
+    nested.mkdir(parents=True)
+
+    r = client.get(f"/api/repos/browse?path={tmp_path / 'outer'}")
+    body = r.json()
+    assert body["parent"] == str(tmp_path)
+    names = [e["name"] for e in body["entries"]]
+    assert "inner" in names
+
+
+def test_browse_hides_hidden_except_git(client, monkeypatch, tmp_path):
+    import mastisk.routes.repos_route as rr
+    monkeypatch.setattr(rr.Path, "home", classmethod(lambda cls: tmp_path))
+    (tmp_path / ".DS_Store").write_text("")
+    (tmp_path / ".hidden").mkdir()
+    (tmp_path / ".git").mkdir()
+    r = client.get("/api/repos/browse")
+    names = [e["name"] for e in r.json()["entries"]]
+    assert ".DS_Store" not in names
+    assert ".hidden" not in names
+    # .git is not filtered; it should be present.
+    assert ".git" in names

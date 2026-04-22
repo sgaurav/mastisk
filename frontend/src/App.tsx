@@ -177,7 +177,12 @@ export function App() {
         {view === 'queue' && <QueueView onNavigate={navigate}/>}
         {view === 'lint' && <SystemCheckView/>}
         {view === 'settings' && <SettingsView/>}
-        {view === 'notes' && <NotesView onNavigate={navigate}/>}
+        {view === 'notes' && (
+          <NotesView
+            onNavigate={navigate}
+            onCaptureNote={() => setCaptureOpen(true)}
+          />
+        )}
         {view === 'note' && currentNote !== null && <NoteView noteId={currentNote} onNavigate={navigate}/>}
         {view === 'roundtables' && <RoundtablesListView onNavigate={navigate}/>}
         {view === 'roundtable' && currentRoundtable !== null && (

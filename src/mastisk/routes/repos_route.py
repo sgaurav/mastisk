@@ -1,6 +1,8 @@
 """Repos API — register GitHub repos for ingestion + ideation."""
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
@@ -185,6 +187,82 @@ async def ideate_now_by_slug_endpoint(slug: str) -> dict:
         raise HTTPException(status_code=404, detail="repo not found")
     enqueue("github_ideator", "ideate", {"repo_slug": slug})
     return {"ok": True}
+
+
+# ─── Filesystem browser — used by the Add Repo modal's folder picker ─────
+
+
+class BrowseEntry(BaseModel):
+    name: str
+    path: str           # absolute
+    is_dir: bool
+    is_git_repo: bool   # only meaningful when is_dir
+
+
+class BrowseResponse(BaseModel):
+    path: str           # absolute, resolved
+    parent: str | None  # absolute, or None if we're at the user's home
+    entries: list[BrowseEntry]
+
+
+@router.get("/browse")
+async def browse_fs_endpoint(path: str | None = None) -> BrowseResponse:
+    """List directory entries. Restricted to ~ by default.
+
+    Each directory is flagged is_git_repo=True if it contains a .git dir.
+    Symlinks are resolved; hidden entries (starting with '.') are excluded
+    except for .git (so a cloned repo's top level still shows).
+    """
+    home = Path.home().resolve()
+
+    if path is None or not path:
+        start = home
+    else:
+        try:
+            start = Path(path).expanduser().resolve()
+        except (RuntimeError, OSError) as e:
+            raise HTTPException(status_code=422, detail=f"invalid path: {e}")
+
+    # Security: must be under $HOME
+    try:
+        start.relative_to(home)
+    except ValueError:
+        raise HTTPException(status_code=403, detail=f"path not under home dir: {start}")
+
+    if not start.is_dir():
+        raise HTTPException(status_code=404, detail=f"not a directory: {start}")
+
+    parent: str | None = None
+    if start != home:
+        parent = str(start.parent)
+
+    entries: list[BrowseEntry] = []
+    try:
+        for child in sorted(start.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())):
+            name = child.name
+            # Skip hidden entries except .git (so we can show git folders)
+            if name.startswith(".") and name != ".git":
+                continue
+            try:
+                is_dir = child.is_dir()
+            except OSError:
+                continue
+            is_git = False
+            if is_dir:
+                try:
+                    is_git = (child / ".git").exists()
+                except OSError:
+                    is_git = False
+            entries.append(BrowseEntry(
+                name=name,
+                path=str(child.resolve()),
+                is_dir=is_dir,
+                is_git_repo=is_git,
+            ))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=f"permission denied: {e}")
+
+    return BrowseResponse(path=str(start), parent=parent, entries=entries)
 
 
 # ─── /{owner}/{name} — legacy github-only endpoints, kept for bookmarks ───

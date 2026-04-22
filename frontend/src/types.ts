@@ -277,6 +277,13 @@ export interface RepoSummary {
   snapshot: RepoSnapshot | null;
 }
 
+export interface BrowseEntry {
+  name: string;
+  path: string;
+  is_dir: boolean;
+  is_git_repo: boolean;
+}
+
 export interface RepoDetail {
   slug: string;
   source_type?: 'github' | 'local';
