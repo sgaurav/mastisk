@@ -190,6 +190,7 @@ mastisk dev                 dev mode with reload (repo-checkout only)
 mastisk url                 print Desktop + LAN + Tailnet URLs
 mastisk add-feed <url>      subscribe an RSS feed
 mastisk add-youtube <url>   queue a video for Listener
+mastisk note [text]         capture a note (opens $EDITOR if no text)
 mastisk logs                tail agent activity
 mastisk vault-path          show where the vault lives
 mastisk backup              tar the DB + config to ./mastisk-backup-*.tar.gz
