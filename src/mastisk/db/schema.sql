@@ -315,3 +315,55 @@ CREATE TABLE IF NOT EXISTS roundtable_perspectives (
 );
 
 CREATE INDEX IF NOT EXISTS idx_roundtable_perspectives_rt ON roundtable_perspectives(roundtable_id);
+
+-- ─────────────────────────────── GitHub ───────────────────────────────
+
+CREATE TABLE IF NOT EXISTS repos (
+  slug            TEXT PRIMARY KEY,
+  owner           TEXT NOT NULL,
+  name            TEXT NOT NULL,
+  display_name    TEXT,
+  description     TEXT,
+  default_branch  TEXT,
+  is_private      INTEGER NOT NULL DEFAULT 0,
+  added_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
+  last_polled_at  DATETIME,
+  last_ideated_at DATETIME,
+  context_md      TEXT,
+  deleted_at      DATETIME
+);
+
+CREATE INDEX IF NOT EXISTS idx_repos_added ON repos(added_at DESC);
+CREATE INDEX IF NOT EXISTS idx_repos_not_deleted ON repos(slug) WHERE deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS repo_snapshots (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  repo_slug         TEXT NOT NULL REFERENCES repos(slug) ON DELETE CASCADE,
+  polled_at         DATETIME NOT NULL,
+  latest_commit_sha TEXT,
+  latest_commit_at  DATETIME,
+  open_issues_count INTEGER,
+  open_prs_count    INTEGER,
+  stars_count       INTEGER,
+  forks_count       INTEGER,
+  commits_json      TEXT,
+  issues_json       TEXT,
+  prs_json          TEXT,
+  readme_hash       TEXT,
+  readme_excerpt    TEXT,
+  error             TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_repo_snapshots_repo ON repo_snapshots(repo_slug, polled_at DESC);
+
+CREATE TABLE IF NOT EXISTS repo_idea_runs (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  repo_slug     TEXT NOT NULL REFERENCES repos(slug) ON DELETE CASCADE,
+  ideated_at    DATETIME NOT NULL,
+  snapshot_id   INTEGER REFERENCES repo_snapshots(id) ON DELETE SET NULL,
+  note_ids_json TEXT,
+  model         TEXT,
+  error         TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_repo_idea_runs_repo ON repo_idea_runs(repo_slug, ideated_at DESC);

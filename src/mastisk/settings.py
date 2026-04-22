@@ -57,6 +57,17 @@ class RoundtableSettings(BaseSettings):
     context_max_chars: int = 4000
 
 
+class GithubSettings(BaseSettings):
+    """Config for the GitHub Context Agent subsystem.
+    See docs/superpowers/specs/2026-04-22-github-context-agent-design.md §7."""
+    pat: str = ""
+    poll_interval_minutes: int = 60
+    ideate_tick_minutes: int = 60
+    ideate_min_interval_hours: int = 24
+    ideas_per_run: int = 4
+    ideate_model: str = "claude-sonnet-4-6"
+
+
 class Settings(BaseSettings):
     # populate_by_name: accept both the field name (from TOML) AND the alias
     # (from env vars). Without this, pydantic v2 silently drops TOML kwargs
@@ -91,6 +102,8 @@ class Settings(BaseSettings):
     notes: NotesSettings = Field(default_factory=NotesSettings)
 
     roundtable: RoundtableSettings = Field(default_factory=RoundtableSettings)
+
+    github: GithubSettings = Field(default_factory=GithubSettings)
 
     # RSS feeds to subscribe (managed via CLI, stored in DB — this is just the initial seed)
     seed_feeds: list[str] = Field(default_factory=list)
