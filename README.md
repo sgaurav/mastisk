@@ -199,6 +199,18 @@ mastisk disable-autostart   remove launchd agent
 
 ---
 
+## Capturing notes
+
+Three ways, any combination:
+
+- **PWA:** click the `+` in the titlebar, type, ⌘↵ to save.
+- **CLI:** `mastisk note "a quick thought"` or `mastisk note` (opens `$EDITOR`).
+- **Any editor:** drop a `.md` file into `vault/_notes/inbox/` — Obsidian, Files app, vim, iOS Shortcut to Files, etc.
+
+Notes live in `vault/_notes/YYYY-MM-DD/` once classified. Phase 2 (classification by the Notetaker agent) is next.
+
+---
+
 ## What lives where
 
 | kind | path | synced? |
