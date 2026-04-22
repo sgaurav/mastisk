@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field, field_validator
 from slugify import slugify
 
@@ -82,4 +83,85 @@ async def capture_note(req: CaptureRequest) -> dict:
         "slug": row["slug"],
         "path": row["path"],
         "created_at": row["created_at"],
+    }
+
+
+@router.get("")
+async def list_notes_endpoint(
+    limit: int = 50,
+    before: int | None = None,
+    classification: str | None = None,
+) -> list[dict]:
+    if limit < 1 or limit > 500:
+        raise HTTPException(status_code=422, detail="limit must be 1..500")
+    with connect() as conn:
+        rows = q.list_notes(conn, limit=limit, before_id=before, classification=classification)
+    return [_note_summary(r) for r in rows]
+
+
+@router.get("/{note_id}/file", response_class=PlainTextResponse)
+async def get_note_file_endpoint(note_id: int) -> PlainTextResponse:
+    with connect() as conn:
+        row = q.get_note(conn, note_id)
+    if row is None or row["deleted_at"] is not None:
+        raise HTTPException(status_code=404, detail="note not found")
+    file_path = vault_dir() / row["path"]
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="note file missing")
+    return PlainTextResponse(
+        file_path.read_text(encoding="utf-8"), media_type="text/markdown"
+    )
+
+
+@router.get("/{note_id}")
+async def get_note_endpoint(note_id: int) -> dict:
+    with connect() as conn:
+        row = q.get_note(conn, note_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="note not found")
+    return _note_detail(row)
+
+
+@router.delete("/{note_id}", status_code=204)
+async def delete_note_endpoint(note_id: int) -> None:
+    with connect() as conn:
+        row = q.get_note(conn, note_id)
+        if row is None or row["deleted_at"] is not None:
+            raise HTTPException(status_code=404, detail="note not found")
+        q.soft_delete_note(conn, note_id)
+    file_path = vault_dir() / row["path"]
+    try:
+        file_path.unlink()
+    except FileNotFoundError:
+        pass
+
+
+def _note_summary(row: dict) -> dict:
+    """Compact view for list endpoints — omits body + escalation plumbing."""
+    import json
+    return {
+        "id": row["id"],
+        "slug": row["slug"],
+        "path": row["path"],
+        "source": row["source"],
+        "created_at": row["created_at"],
+        "classified_at": row["classified_at"],
+        "classification": row["classification"],
+        "summary": row["summary"],
+        "tags": json.loads(row["tags_json"]) if row["tags_json"] else [],
+        "escalation_state": row["escalation_state"],
+    }
+
+
+def _note_detail(row: dict) -> dict:
+    """Full view — includes body and all escalation fields."""
+    return {
+        **_note_summary(row),
+        "body": row["body"],
+        "body_sha256": row["body_sha256"],
+        "confidence": row["confidence"],
+        "escalation_trigger": row["escalation_trigger"],
+        "escalation_article_id": row["escalation_article_id"],
+        "escalation_retry_count": row["escalation_retry_count"],
+        "deleted_at": row["deleted_at"],
     }
