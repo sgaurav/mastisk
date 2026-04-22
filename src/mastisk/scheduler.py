@@ -154,6 +154,23 @@ async def start_scheduler():
     except Exception as e:
         log.info("synthesizer not scheduled: %s", e)
 
+    try:
+        from mastisk.agents.roundtable import Roundtable
+        # Roundtable is purely job-driven (POST /api/roundtables enqueues a
+        # fan_out job). 10s tick keeps latency low for a user who just clicked
+        # the button; first run 5s after boot so any jobs queued before a
+        # restart drain promptly.
+        sched.add_job(
+            Roundtable().run_once, "interval",
+            seconds=Roundtable.tick_seconds, id="roundtable",
+            max_instances=1,
+            next_run_time=datetime.now(timezone.utc) + timedelta(seconds=5),
+            coalesce=True,
+        )
+        log.info("scheduler: roundtable registered (10s tick)")
+    except Exception as e:
+        log.warning("scheduler: roundtable registration failed: %s", e)
+
     sched.start()
     log.info("scheduler started")
     return sched

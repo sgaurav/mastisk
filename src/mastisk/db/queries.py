@@ -1051,3 +1051,109 @@ def list_notes_for_article(
             (article_id, limit),
         ).fetchall()
     ]
+
+
+# ─────────────────────────────── Roundtables ───────────────────────────────
+
+def create_roundtable(
+    conn: sqlite3.Connection,
+    *,
+    input_type: str,
+    input_ref: str,
+    prompt: str,
+) -> int:
+    """Insert a roundtable row in status='pending'. Returns the new id."""
+    cur = conn.execute(
+        """INSERT INTO roundtables (input_type, input_ref, prompt, status)
+           VALUES (?, ?, ?, 'pending')""",
+        (input_type, input_ref, prompt),
+    )
+    return cur.lastrowid or 0
+
+
+def get_roundtable(conn: sqlite3.Connection, rt_id: int) -> dict | None:
+    row = conn.execute(
+        "SELECT * FROM roundtables WHERE id = ?", (rt_id,)
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def list_roundtables(
+    conn: sqlite3.Connection,
+    *,
+    limit: int = 50,
+    before_id: int | None = None,
+) -> list[dict]:
+    """List roundtables newest first, optional keyset pagination via before_id."""
+    q = "SELECT * FROM roundtables"
+    params: list[Any] = []
+    if before_id is not None:
+        q += " WHERE id < ?"
+        params.append(before_id)
+    q += " ORDER BY created_at DESC, id DESC LIMIT ?"
+    params.append(limit)
+    return [dict(r) for r in conn.execute(q, params).fetchall()]
+
+
+def list_roundtable_perspectives(
+    conn: sqlite3.Connection, rt_id: int
+) -> list[dict]:
+    """Perspectives for a roundtable, ordered by backend for stable rendering."""
+    return [
+        dict(r) for r in conn.execute(
+            "SELECT * FROM roundtable_perspectives WHERE roundtable_id = ? ORDER BY backend",
+            (rt_id,),
+        ).fetchall()
+    ]
+
+
+def insert_roundtable_perspective(
+    conn: sqlite3.Connection,
+    *,
+    roundtable_id: int,
+    backend: str,
+    model: str | None,
+    content: str | None,
+    error: str | None,
+    latency_ms: int | None,
+    started_at: str | None,
+    finished_at: str | None,
+) -> int:
+    """Record one backend's response (success or error). Always writes a row."""
+    cur = conn.execute(
+        """INSERT INTO roundtable_perspectives
+             (roundtable_id, backend, model, content, error, latency_ms, started_at, finished_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (roundtable_id, backend, model, content, error, latency_ms, started_at, finished_at),
+    )
+    return cur.lastrowid or 0
+
+
+def update_roundtable_status(
+    conn: sqlite3.Connection,
+    *,
+    rt_id: int,
+    status: str,
+    synthesis: str | None = None,
+    synthesis_model: str | None = None,
+    error: str | None = None,
+    finished: bool = False,
+) -> None:
+    """Patch a roundtable's status and (optionally) synthesis/error.
+
+    When ``finished=True``, also stamps ``finished_at`` and writes the
+    synthesis/error fields. The ``running`` transition uses the compact form.
+    """
+    if finished:
+        conn.execute(
+            """UPDATE roundtables
+               SET status = ?, synthesis = ?, synthesis_model = ?, error = ?,
+                   finished_at = CURRENT_TIMESTAMP
+               WHERE id = ?""",
+            (status, synthesis, synthesis_model, error, rt_id),
+        )
+    else:
+        conn.execute(
+            "UPDATE roundtables SET status = ? WHERE id = ?",
+            (status, rt_id),
+        )
