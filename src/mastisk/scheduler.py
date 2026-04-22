@@ -49,6 +49,21 @@ async def start_scheduler():
         log.info("compiler not scheduled: %s", e)
 
     try:
+        from mastisk.agents.notetaker import Notetaker
+        # 30s tick per spec §4 + §10. First run 5s after boot so any files
+        # dropped into the vault between process restarts start the two-tick
+        # stability clock promptly (first tick = register, second tick = classify).
+        sched.add_job(
+            Notetaker().run_once, "interval",
+            seconds=Notetaker.tick_seconds, id="notetaker",
+            max_instances=1,
+            next_run_time=datetime.now(timezone.utc) + timedelta(seconds=5),
+            coalesce=True,
+        )
+    except Exception as e:
+        log.info("notetaker not scheduled: %s", e)
+
+    try:
         from mastisk.agents.linter import Linter
         # Linter runs slightly after Scout/Compiler so it sees fresh articles
         # on the same boot without racing them.

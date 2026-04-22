@@ -67,6 +67,50 @@ async def chat(prompt: str, *, cheap: bool = False, system: str | None = None) -
     raise RuntimeError(f"all ollama endpoints failed: {last_err}")
 
 
+async def run_ollama(
+    prompt: str, model: str, *, system: str | None = None
+) -> dict:
+    """Run a single chat completion against ``model``, returning ``{"text": str, "raw": dict}``.
+
+    Mirrors the ``claude_bridge.run_claude`` contract so callers can swap engines
+    with the same shape. Unlike ``chat()``, which uses the globally-configured
+    heavy/cheap models, this lets an agent pick a model per-call (e.g. the
+    Notetaker's ``llama3.1:8b``). Tries cloud first then local — same endpoint
+    fallback as ``chat()``.
+    """
+    messages: list[dict] = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
+
+    last_err: Exception | None = None
+    for base, key in _endpoints():
+        try:
+            async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+                headers = {"Authorization": f"Bearer {key}"} if key else {}
+                r = await client.post(
+                    f"{base}/api/chat",
+                    headers=headers,
+                    json={"model": model, "messages": messages, "stream": False, "think": False},
+                )
+                r.raise_for_status()
+                data = r.json()
+                msg = data.get("message") or {}
+                content = msg.get("content") or ""
+                if not content:
+                    choices = data.get("choices") or []
+                    if choices:
+                        content = choices[0].get("message", {}).get("content", "")
+                if not content:
+                    raise RuntimeError(f"empty response from {base}: {data}")
+                return {"text": content, "raw": data}
+        except Exception as e:
+            log.info("ollama run_ollama failed at %s model=%s: %s", base, model, e)
+            last_err = e
+            continue
+    raise RuntimeError(f"all ollama endpoints failed for model={model}: {last_err}")
+
+
 async def embed(texts: list[str]) -> list[list[float]]:
     """Try /api/embed (0.1.x+). Returns [] on failure — caller should fail open."""
     s = get_settings()
