@@ -7,10 +7,14 @@
 """
 from __future__ import annotations
 
+import os
+import tempfile
 import tomllib
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
+import tomli_w
 from dotenv import load_dotenv
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -129,3 +133,29 @@ def get_settings() -> Settings:
 def reload_settings() -> Settings:
     get_settings.cache_clear()
     return get_settings()
+
+
+def update_toml_key(section: str, key: str, value: Any) -> None:
+    """Surgically update one key in config.toml. Creates the file if missing.
+
+    Only mutates the single (section, key) pair. Any other keys in the file
+    are preserved verbatim. Caller is responsible for calling reload_settings()
+    after this returns.
+    """
+    p = config_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    data: dict = {}
+    if p.exists():
+        with p.open("rb") as f:
+            data = tomllib.load(f)
+    section_dict = data.setdefault(section, {})
+    section_dict[key] = value
+    # Atomic write via tempfile + rename
+    fd, tmp = tempfile.mkstemp(prefix=f".{p.name}.", suffix=".tmp", dir=p.parent)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            tomli_w.dump(data, f)
+        os.replace(tmp, p)
+    except Exception:
+        Path(tmp).unlink(missing_ok=True)
+        raise

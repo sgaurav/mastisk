@@ -11,11 +11,12 @@ import json
 import tomllib
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from mastisk.paths import config_path
-from mastisk.settings import get_settings, reload_settings
+from mastisk.settings import get_settings, reload_settings, update_toml_key
 
 router = APIRouter(tags=["settings"])
 
@@ -172,3 +173,70 @@ def _toml_scalar(v: Any) -> str:
     if isinstance(v, list):
         return "[" + ", ".join(_toml_scalar(x) for x in v) + "]"
     raise TypeError(f"unsupported config value type: {type(v).__name__}")
+
+
+# ───── GitHub PAT management ─────
+
+class SetGithubPatRequest(BaseModel):
+    pat: str   # empty string clears
+
+
+def _mask_pat(pat: str) -> str | None:
+    return ("…" + pat[-4:]) if len(pat) >= 4 else None
+
+
+@router.get("/settings/github")
+async def get_github_settings() -> dict:
+    """Return GitHub settings WITHOUT leaking the full PAT."""
+    s = get_settings().github
+    pat = s.pat or ""
+    return {
+        "pat_set": bool(pat),
+        "pat_last4": _mask_pat(pat),
+        "poll_interval_minutes": s.poll_interval_minutes,
+        "ideate_min_interval_hours": s.ideate_min_interval_hours,
+        "ideas_per_run": s.ideas_per_run,
+    }
+
+
+@router.put("/settings/github/pat")
+async def set_github_pat(req: SetGithubPatRequest) -> dict:
+    """Persist the GitHub PAT to config.toml and reload settings."""
+    update_toml_key("github", "pat", req.pat)
+    reload_settings()
+    s = get_settings().github
+    return {
+        "pat_set": bool(s.pat),
+        "pat_last4": _mask_pat(s.pat or ""),
+    }
+
+
+@router.get("/settings/github/test")
+async def test_github_pat() -> dict:
+    """Hit GET /user with the current PAT. Returns username on success, error description on failure."""
+    pat = get_settings().github.pat
+    if not pat:
+        raise HTTPException(status_code=422, detail="no PAT configured")
+    try:
+        async with httpx.AsyncClient(base_url="https://api.github.com", timeout=10.0) as client:
+            resp = await client.get("/user", headers={
+                "Authorization": f"Bearer {pat}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+                "User-Agent": "mastisk-pat-test/0.1",
+            })
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"network error: {e}")
+    if resp.status_code == 401:
+        raise HTTPException(status_code=401, detail="PAT is invalid")
+    if resp.status_code == 403:
+        raise HTTPException(status_code=403, detail="PAT lacks required scope or is rate-limited")
+    if not resp.is_success:
+        raise HTTPException(status_code=502, detail=f"GitHub returned {resp.status_code}")
+    data = resp.json()
+    return {
+        "ok": True,
+        "username": data.get("login"),
+        "name": data.get("name"),
+        "public_repos": data.get("public_repos"),
+    }

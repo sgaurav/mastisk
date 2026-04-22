@@ -244,6 +244,40 @@ export const api = {
       }),
   },
 
+  github: {
+    get: (): Promise<{
+      pat_set: boolean; pat_last4: string | null;
+      poll_interval_minutes: number; ideate_min_interval_hours: number; ideas_per_run: number;
+    }> =>
+      fetch(`${BASE}/settings/github`).then(r => r.json()),
+
+    setPat: (pat: string): Promise<{ pat_set: boolean; pat_last4: string | null }> =>
+      fetch(`${BASE}/settings/github/pat`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pat }),
+      }).then(async r => {
+        if (!r.ok) {
+          const msg = await r.text();
+          throw new Error(msg);
+        }
+        return r.json();
+      }),
+
+    testPat: (): Promise<{ ok: boolean; username: string; name: string | null; public_repos: number }> =>
+      fetch(`${BASE}/settings/github/test`).then(async r => {
+        if (!r.ok) {
+          let detail = String(r.status);
+          try {
+            const body = await r.json() as { detail?: string };
+            if (body && typeof body.detail === 'string' && body.detail) detail = body.detail;
+          } catch { /* fall back to status code */ }
+          throw new Error(detail);
+        }
+        return r.json();
+      }),
+  },
+
   repos: {
     add: (slug: string): Promise<{ slug: string; display_name: string; description: string | null }> =>
       fetch('/api/repos', {

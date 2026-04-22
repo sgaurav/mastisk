@@ -4,6 +4,9 @@ import type { SettingsBundle, SettingsPatch } from '../types';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
+type GithubState = { pat_set: boolean; pat_last4: string | null } | null;
+type GhMsg = { kind: 'ok' | 'err'; text: string } | null;
+
 export function SettingsView() {
   const [bundle, setBundle] = useState<SettingsBundle | null>(null);
   const [draft, setDraft] = useState<SettingsPatch>({});
@@ -11,8 +14,17 @@ export function SettingsView() {
   const [save, setSave] = useState<SaveState>('idle');
   const [err, setErr] = useState<string | null>(null);
 
+  const [githubState, setGithubState] = useState<GithubState>(null);
+  const [newPat, setNewPat] = useState('');
+  const [ghSaveBusy, setGhSaveBusy] = useState(false);
+  const [ghTestBusy, setGhTestBusy] = useState(false);
+  const [ghMsg, setGhMsg] = useState<GhMsg>(null);
+
   useEffect(() => {
     void api.settings().then((b) => { setBundle(b); setDraft({}); setKeyInput(''); }).catch((e) => setErr(String(e)));
+    void api.github.get()
+      .then((g) => setGithubState({ pat_set: g.pat_set, pat_last4: g.pat_last4 }))
+      .catch(() => setGithubState({ pat_set: false, pat_last4: null }));
   }, []);
 
   if (!bundle) {
@@ -166,6 +178,99 @@ export function SettingsView() {
           onChange={(val) => set({ summarize_model_heavy: val })}
           placeholder="kimi-k2.5:cloud"
         />
+      </Section>
+
+      <Section title="GitHub">
+        {githubState === null ? (
+          <p className="settings-section-hint">loading…</p>
+        ) : (
+          <>
+            <div className="settings-row">
+              <label className="settings-label">
+                <div className="k">Current PAT</div>
+                <div className="h">
+                  Without a PAT, mastisk polls public repos at 60 req/hour.
+                  With a <a href="https://github.com/settings/tokens" target="_blank" rel="noreferrer">classic PAT</a>
+                  {' '}(scope: <code>public_repo</code> for public only, <code>repo</code> for private)
+                  you get 5000/hour and access to private repos.
+                </div>
+              </label>
+              <div className="settings-ctl">
+                {githubState.pat_set ? (
+                  <code style={{ fontFamily: 'var(--mono)' }}>{githubState.pat_last4}</code>
+                ) : (
+                  <em style={{ color: 'var(--fg-faint)' }}>not set (unauthenticated polling, 60 req/hr)</em>
+                )}
+              </div>
+            </div>
+
+            <div className="settings-row">
+              <label className="settings-label">
+                <div className="k">github.pat</div>
+                <div className="h">Paste a new token here and hit save. Empty string clears.</div>
+              </label>
+              <div className="settings-ctl">
+                <input
+                  type="password"
+                  autoComplete="off"
+                  value={newPat}
+                  placeholder="ghp_... (classic) or github_pat_... (fine-grained)"
+                  onChange={(e) => { setNewPat(e.target.value); setGhMsg(null); }}
+                />
+                <div className="settings-inline-note">
+                  <button
+                    className="chip"
+                    disabled={ghSaveBusy}
+                    onClick={async () => {
+                      setGhSaveBusy(true);
+                      setGhMsg(null);
+                      try {
+                        const res = await api.github.setPat(newPat);
+                        setGithubState({ pat_set: res.pat_set, pat_last4: res.pat_last4 });
+                        setNewPat('');
+                        setGhMsg({ kind: 'ok', text: res.pat_set ? 'PAT saved' : 'PAT cleared' });
+                      } catch (e) {
+                        setGhMsg({ kind: 'err', text: e instanceof Error ? e.message : 'save failed' });
+                      } finally {
+                        setGhSaveBusy(false);
+                      }
+                    }}
+                  >
+                    {ghSaveBusy ? 'saving…' : 'Save'}
+                  </button>
+                  {githubState.pat_set && (
+                    <button
+                      className="chip"
+                      disabled={ghTestBusy}
+                      onClick={async () => {
+                        setGhTestBusy(true);
+                        setGhMsg(null);
+                        try {
+                          const r = await api.github.testPat();
+                          setGhMsg({
+                            kind: 'ok',
+                            text: `authenticated as @${r.username} (${r.public_repos} public repos)`,
+                          });
+                        } catch (e) {
+                          setGhMsg({ kind: 'err', text: e instanceof Error ? e.message : 'test failed' });
+                        } finally {
+                          setGhTestBusy(false);
+                        }
+                      }}
+                    >
+                      {ghTestBusy ? 'testing…' : 'Test'}
+                    </button>
+                  )}
+                </div>
+                {ghMsg && (
+                  <div className={`settings-inline-note ${ghMsg.kind === 'err' ? 'warn' : ''}`}>
+                    {ghMsg.text}
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
       </Section>
 
       <Section title="Daily agent budgets">
