@@ -13,8 +13,12 @@ interface Props {
 const SYS_VIEWS = new Set<View>(['digest', 'queue', 'feed', 'agents', 'graph', 'ingest', 'lint', 'settings', 'open_questions', 'notes', 'roundtables', 'repos']);
 
 export function Sidebar({ vault, pinned, user, currentView, currentArticle, onNavigate }: Props) {
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const toggle = (k: string) => setCollapsed((s) => ({ ...s, [k]: !s[k] }));
+  // Folders are collapsed by default. A label appearing in `opened` with value
+  // true means the user has expanded it. Kept in-memory per session — no
+  // persistence, since recall of "which sections were open last week" isn't a
+  // useful signal and would need a storage contract.
+  const [opened, setOpened] = useState<Record<string, boolean>>({});
+  const toggle = (k: string) => setOpened((s) => ({ ...s, [k]: !s[k] }));
 
   return (
     <aside className="sidebar">
@@ -33,7 +37,7 @@ export function Sidebar({ vault, pinned, user, currentView, currentArticle, onNa
       {vault.map((item, i) => {
         if (item.kind === 'section') return <div key={i} className="side-section">{item.label}</div>;
         if (item.kind === 'folder') {
-          const open = !collapsed[item.label];
+          const open = opened[item.label] === true;
           return (
             <div key={i}>
               <div className={`side-folder ${open ? '' : 'collapsed'}`} onClick={() => toggle(item.label)}>
