@@ -700,6 +700,37 @@ def add_repo(slug: str = typer.Argument(..., help="GitHub slug like 'owner/repo'
     typer.secho(f"added {meta['slug']} — first poll enqueued", fg="green")
 
 
+@app.command(name="add-local-repo")
+def add_local_repo(path: str = typer.Argument(..., help="Absolute path to a local git repo")) -> None:
+    """Track a local git repository. Mastisk polls its state and generates idea-notes like it does for GitHub repos."""
+    from pathlib import Path as _P
+    from mastisk.agents.base import enqueue
+    from mastisk.bridges import local_git_bridge
+    from mastisk.db.queries import connect
+
+    _ensure_db()
+    p = _P(path).expanduser().resolve()
+    if not p.is_dir():
+        typer.secho(f"not a directory: {p}", fg="red")
+        raise typer.Exit(code=1)
+    if not (p / ".git").exists():
+        typer.secho(f"not a git repo: {p}", fg="red")
+        raise typer.Exit(code=1)
+    slug = local_git_bridge.derive_local_slug(p)
+    with connect() as conn:
+        conn.execute(
+            """INSERT OR REPLACE INTO repos
+               (slug, source_type, owner, name, display_name, description,
+                default_branch, is_private, local_path, added_at, deleted_at)
+               VALUES (?, 'local', 'local', ?, ?, NULL, NULL, 0, ?,
+                       COALESCE((SELECT added_at FROM repos WHERE slug = ?), CURRENT_TIMESTAMP),
+                       NULL)""",
+            (slug, p.name, f"local:{p.name}", str(p), slug),
+        )
+    enqueue("github_poller", "poll", {"repo_slug": slug})
+    typer.secho(f"added {slug} — first poll enqueued", fg="green")
+
+
 @app.command(name="list-repos")
 def list_repos() -> None:
     """List tracked GitHub repos."""

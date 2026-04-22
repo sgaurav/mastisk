@@ -60,6 +60,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         conn, "articles", "source_note_id",
         "INTEGER REFERENCES notes(id) ON DELETE SET NULL",
     )
+    _add_column_if_missing(conn, "repos", "source_type", "TEXT NOT NULL DEFAULT 'github'")
+    _add_column_if_missing(conn, "repos", "local_path", "TEXT")
 
 
 @contextmanager

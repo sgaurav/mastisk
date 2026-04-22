@@ -320,12 +320,14 @@ CREATE INDEX IF NOT EXISTS idx_roundtable_perspectives_rt ON roundtable_perspect
 
 CREATE TABLE IF NOT EXISTS repos (
   slug            TEXT PRIMARY KEY,
+  source_type     TEXT NOT NULL DEFAULT 'github',   -- 'github' | 'local'
   owner           TEXT NOT NULL,
   name            TEXT NOT NULL,
   display_name    TEXT,
   description     TEXT,
   default_branch  TEXT,
   is_private      INTEGER NOT NULL DEFAULT 0,
+  local_path      TEXT,                              -- for source_type='local'
   added_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
   last_polled_at  DATETIME,
   last_ideated_at DATETIME,

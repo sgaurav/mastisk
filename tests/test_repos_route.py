@@ -138,3 +138,36 @@ def test_add_repo_404_message_with_pat(client, monkeypatch):
     # Should mention "doesn't have access" or similar, not "add a PAT"
     body = r.json()["detail"]
     assert "access" in body or "doesn't have" in body
+
+
+def test_add_local_repo_endpoint(client, db, tmp_path):
+    import subprocess
+    p = tmp_path / "myproj"
+    p.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=p, check=True)
+    (p / "README.md").write_text("# x")
+    subprocess.run(["git", "-c", "user.email=x@x.x", "-c", "user.name=x", "add", "."], cwd=p, check=True)
+    subprocess.run(["git", "-c", "user.email=x@x.x", "-c", "user.name=x", "commit", "-q", "-m", "i"], cwd=p, check=True)
+
+    r = client.post("/api/repos/local", json={"path": str(p)})
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["slug"].startswith("local:")
+    assert body["local_path"] == str(p.resolve())
+
+    # DB row + poll job
+    assert db.execute("SELECT 1 FROM repos WHERE slug = ?", (body["slug"],)).fetchone()
+    assert db.execute("SELECT 1 FROM jobs WHERE agent='github_poller'").fetchone()
+
+
+def test_add_local_repo_rejects_non_git_dir(client, tmp_path):
+    # Directory exists but no .git
+    (tmp_path / "plain").mkdir()
+    r = client.post("/api/repos/local", json={"path": str(tmp_path / "plain")})
+    assert r.status_code == 422
+    assert "not a git repo" in r.json()["detail"]
+
+
+def test_add_local_repo_rejects_missing_dir(client, tmp_path):
+    r = client.post("/api/repos/local", json={"path": str(tmp_path / "nope")})
+    assert r.status_code == 422

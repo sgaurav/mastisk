@@ -53,6 +53,33 @@ def _compose_context_md(
     return "\n".join(parts) + "\n"
 
 
+def _compose_local_context_md(repo: dict, state: dict) -> str:
+    parts = []
+    parts.append(f"# {repo.get('display_name') or repo['slug']}\n")
+    parts.append(f"**path:** `{repo.get('local_path')}`\n")
+    parts.append(
+        f"**branch:** `{state['branch']}` · "
+        f"**dirty files:** {state['dirty_count']} · "
+        f"**tracked:** {state['tracked_count']}\n"
+    )
+    if state.get("readme_excerpt"):
+        parts.append("## README (excerpt)\n")
+        parts.append(state["readme_excerpt"].strip() + "\n")
+    if state.get("changelog_excerpt"):
+        parts.append("\n## CHANGELOG (excerpt)\n")
+        parts.append(state["changelog_excerpt"].strip() + "\n")
+    if state.get("commits"):
+        parts.append("\n## Recent commits\n")
+        for c in state["commits"][:10]:
+            parts.append(f"- `{c['sha'][:7]}` {c['message']} — _{c['author']}_")
+    if state.get("top_files"):
+        parts.append("\n## Top-level file tree (up to 200 files, scrubbed)\n")
+        parts.append("```")
+        parts.extend(state["top_files"][:50])  # show 50 in the context
+        parts.append("```")
+    return "\n".join(parts) + "\n"
+
+
 class GithubPoller(Agent):
     name: ClassVar[str] = "github_poller"
     tick_seconds: ClassVar[int] = 600  # 10-min tick; filters by poll_interval_minutes per repo
@@ -101,6 +128,14 @@ class GithubPoller(Agent):
             log.info("github_poller: skip deleted/missing repo %s", slug)
             return
 
+        source_type = repo.get("source_type") or "github"
+        if source_type == "local":
+            await self._poll_local(repo)
+        else:
+            await self._poll_github(repo)
+
+    async def _poll_github(self, repo: dict) -> None:
+        slug = repo["slug"]
         owner = repo["owner"]
         name = repo["name"]
         now_iso = datetime.now(timezone.utc).isoformat()
@@ -179,3 +214,45 @@ class GithubPoller(Agent):
 
         self.emit_feed(verb="polled", obj=slug, kind="repo",
                        payload={"commits": len(commits), "issues": len(issues), "prs": len(prs)})
+
+    async def _poll_local(self, repo: dict) -> None:
+        from pathlib import Path
+        from mastisk.bridges import local_git_bridge
+        slug = repo["slug"]
+        local_path = repo.get("local_path")
+        if not local_path:
+            log.warning("github_poller(local): no local_path for %s", slug)
+            return
+        now_iso = datetime.now(timezone.utc).isoformat()
+        try:
+            state = await local_git_bridge.fetch_local_repo_state(Path(local_path))
+        except local_git_bridge.LocalGitError as e:
+            log.warning("github_poller(local): %s failed (%s)", slug, e)
+            with connect() as conn:
+                q.insert_repo_snapshot(
+                    conn, repo_slug=slug, polled_at=now_iso, error=f"local: {e}",
+                )
+                q.mark_repo_polled(conn, slug=slug, polled_at=now_iso)
+            return
+
+        context_md = _compose_local_context_md(repo, state)
+        commits = state["commits"]
+        latest_commit_sha = commits[0]["sha"] if commits else None
+        latest_commit_at = commits[0].get("date") if commits else None
+
+        with connect() as conn:
+            q.insert_repo_snapshot(
+                conn, repo_slug=slug, polled_at=now_iso,
+                latest_commit_sha=latest_commit_sha,
+                latest_commit_at=latest_commit_at,
+                open_issues_count=None, open_prs_count=None,
+                stars_count=None, forks_count=None,
+                commits_json=json.dumps(commits),
+                issues_json=None, prs_json=None,
+                readme_hash=state.get("readme_hash"),
+                readme_excerpt=state.get("readme_excerpt"),
+            )
+            q.update_repo_context(conn, slug=slug, context_md=context_md, polled_at=now_iso)
+
+        self.emit_feed(verb="polled", obj=slug, kind="repo",
+                       payload={"source": "local", "commits": len(commits), "dirty": state["dirty_count"]})

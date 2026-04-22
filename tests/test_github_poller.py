@@ -121,3 +121,39 @@ def test_poller_rate_limited_defers(db, vault_tmp):
 
     count = db.execute("SELECT COUNT(*) AS c FROM repo_snapshots WHERE repo_slug='a/b'").fetchone()["c"]
     assert count == 0  # no snapshot on rate limit — we retry next tick
+
+
+def test_poller_polls_local_repo(db, vault_tmp, tmp_path):
+    """End-to-end: add a local repo row, run poller, expect snapshot + context_md."""
+    import subprocess
+    from mastisk.agents.base import enqueue
+    from mastisk.agents.github_poller import GithubPoller
+
+    # Build a real temp git repo
+    p = tmp_path / "myproj"
+    p.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=p, check=True)
+    subprocess.run(["git", "config", "user.email", "x@x.x"], cwd=p, check=True)
+    subprocess.run(["git", "config", "user.name", "x"], cwd=p, check=True)
+    (p / "README.md").write_text("# Local Test")
+    subprocess.run(["git", "add", "."], cwd=p, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "first commit"], cwd=p, check=True)
+
+    slug = f"local:{p.resolve()}"
+    db.execute(
+        """INSERT INTO repos (slug, source_type, owner, name, display_name, local_path)
+           VALUES (?, 'local', 'local', 'myproj', 'local:myproj', ?)""",
+        (slug, str(p)),
+    )
+    enqueue("github_poller", "poll", {"repo_slug": slug})
+
+    asyncio.run(GithubPoller().run_once())
+
+    snap = db.execute("SELECT * FROM repo_snapshots WHERE repo_slug = ?", (slug,)).fetchone()
+    assert snap is not None, "expected a snapshot row"
+    assert snap["error"] is None
+    # commits_json contains 'first commit'
+    assert "first commit" in (snap["commits_json"] or "")
+    repo = db.execute("SELECT context_md FROM repos WHERE slug = ?", (slug,)).fetchone()
+    assert repo["context_md"] is not None
+    assert "# local:myproj" in repo["context_md"] or "# myproj" in repo["context_md"]

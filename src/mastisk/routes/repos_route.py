@@ -17,6 +17,10 @@ class AddRepoRequest(BaseModel):
     slug: str = Field(min_length=3)
 
 
+class AddLocalRepoRequest(BaseModel):
+    path: str = Field(min_length=1)
+
+
 def _parse_slug(slug: str) -> tuple[str, str]:
     s = slug.strip().lower()
     if "/" not in s or s.count("/") != 1:
@@ -66,6 +70,31 @@ async def add_repo_endpoint(req: AddRepoRequest) -> dict:
     }
 
 
+@router.post("/local", status_code=201)
+async def add_local_repo_endpoint(req: AddLocalRepoRequest) -> dict:
+    from pathlib import Path
+    from mastisk.bridges import local_git_bridge
+    p = Path(req.path).expanduser().resolve()
+    if not p.is_dir():
+        raise HTTPException(status_code=422, detail=f"not a directory: {p}")
+    if not (p / ".git").exists():
+        raise HTTPException(status_code=422, detail=f"not a git repo: {p}")
+    slug = local_git_bridge.derive_local_slug(p)
+    with connect() as conn:
+        # Insert (or un-tombstone) a local repo row
+        conn.execute(
+            """INSERT OR REPLACE INTO repos
+               (slug, source_type, owner, name, display_name, description,
+                default_branch, is_private, local_path, added_at, deleted_at)
+               VALUES (?, 'local', 'local', ?, ?, NULL, NULL, 0, ?,
+                       COALESCE((SELECT added_at FROM repos WHERE slug = ?), CURRENT_TIMESTAMP),
+                       NULL)""",
+            (slug, p.name, f"local:{p.name}", str(p), slug),
+        )
+    enqueue("github_poller", "poll", {"repo_slug": slug})
+    return {"slug": slug, "local_path": str(p), "display_name": f"local:{p.name}"}
+
+
 @router.get("")
 async def list_repos_endpoint() -> list[dict]:
     with connect() as conn:
@@ -76,6 +105,8 @@ async def list_repos_endpoint() -> list[dict]:
             snap = q.latest_repo_snapshot(conn, r["slug"])
         result.append({
             "slug": r["slug"],
+            "source_type": r.get("source_type") or "github",
+            "local_path": r.get("local_path"),
             "display_name": r["display_name"],
             "description": r["description"],
             "is_private": bool(r["is_private"]),
@@ -103,6 +134,8 @@ async def get_repo_endpoint(owner: str, name: str) -> dict:
         snap = q.latest_repo_snapshot(conn, slug)
     return {
         "slug": r["slug"],
+        "source_type": r.get("source_type") or "github",
+        "local_path": r.get("local_path"),
         "display_name": r["display_name"],
         "description": r["description"],
         "is_private": bool(r["is_private"]),
