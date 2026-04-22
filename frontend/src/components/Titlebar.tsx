@@ -24,6 +24,7 @@ interface Props {
   onToggleSide: () => void;
   onToggleRail: () => void;
   onAsk: () => void;
+  onCapture?: () => void;
   onSearchClick: () => void;
 }
 
@@ -45,7 +46,7 @@ function buildCrumb(view: View, articleTitle?: string, articleKind?: string): st
   return crumb.filter(Boolean);
 }
 
-export function Titlebar({ view, articleTitle, articleKind, theme, onTheme, onToggleSide, onToggleRail, onAsk, onSearchClick }: Props) {
+export function Titlebar({ view, articleTitle, articleKind, theme, onTheme, onToggleSide, onToggleRail, onAsk, onCapture, onSearchClick }: Props) {
   const crumb = buildCrumb(view, articleTitle, articleKind);
 
   return (
@@ -64,6 +65,7 @@ export function Titlebar({ view, articleTitle, articleKind, theme, onTheme, onTo
         <kbd>⌘K</kbd>
       </div>
       <div className="tb-actions">
+        <button className="tb-btn" onClick={onCapture} title="New note (⌘+)">+</button>
         <button className="tb-btn" onClick={onAsk} title="Ask Mastisk">{Icon.ask}</button>
         <button className="tb-btn" onClick={onToggleSide} title="Toggle sidebar">{Icon.panel}</button>
         <button className="tb-btn" onClick={onToggleRail} title="Toggle right rail" style={{transform:'scaleX(-1)'}}>{Icon.panel}</button>
