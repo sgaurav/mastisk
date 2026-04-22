@@ -45,6 +45,32 @@ export function NoteView({ noteId, onNavigate }: Props) {
         {note.classification && <> · {note.classification}</>}
         {note.tags.length > 0 && <> · {note.tags.map(t => `#${t}`).join(' ')}</>}
       </div>
+      {note.related_articles && note.related_articles.length > 0 && (
+        <section style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 11, color: 'var(--fg-faint)', fontFamily: 'var(--mono)', marginBottom: 6 }}>
+            Related · {note.related_articles.length}
+          </div>
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {note.related_articles.map(r => (
+              <li key={r.article_id}>
+                <a
+                  href={`/a/${encodeURIComponent(r.article_id)}`}
+                  onClick={(e) => { e.preventDefault(); onNavigate('article', r.article_id); }}
+                  style={{
+                    fontSize: 12, color: 'var(--fg)',
+                    textDecoration: 'none',
+                    padding: '2px 8px',
+                    border: '1px solid var(--border)', borderRadius: 4,
+                    background: 'var(--bg-soft, transparent)',
+                  }}
+                >
+                  {r.title}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       <pre
         style={{
           whiteSpace: 'pre-wrap', fontFamily: 'var(--mono)', fontSize: 14,

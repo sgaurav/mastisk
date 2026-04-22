@@ -178,3 +178,29 @@ def test_list_notes_for_article(client, db):
     ids_expected = {r1.json()["id"], r2.json()["id"]}
     ids_returned = {n["id"] for n in rows}
     assert ids_returned == ids_expected
+
+
+# ─────────────────────────────── Phase 2: related articles on detail ───────────────────────────────
+
+def test_get_note_detail_includes_related_articles(client, db):
+    # Seed two articles
+    db.execute(
+        "INSERT INTO articles (id, kind, title, slug, body_md) VALUES ('alpha', 'Concept', 'Alpha', 'alpha', '')"
+    )
+    db.execute(
+        "INSERT INTO articles (id, kind, title, slug, body_md) VALUES ('beta', 'Concept', 'Beta', 'beta', '')"
+    )
+    post = client.post("/api/notes", json={"text": "links test"}).json()
+    # Manually insert note_links (as Notetaker would, post-classification)
+    db.execute("INSERT INTO note_links (note_id, article_id, rank) VALUES (?, 'alpha', 0)", (post["id"],))
+    db.execute("INSERT INTO note_links (note_id, article_id, rank) VALUES (?, 'beta', 1)", (post["id"],))
+
+    r = client.get(f"/api/notes/{post['id']}")
+    assert r.status_code == 200
+    body = r.json()
+    assert "related_articles" in body
+    assert len(body["related_articles"]) == 2
+    # Ordered by rank ASC
+    assert body["related_articles"][0]["article_id"] == "alpha"
+    assert body["related_articles"][0]["title"] == "Alpha"
+    assert body["related_articles"][1]["article_id"] == "beta"

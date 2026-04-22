@@ -71,6 +71,7 @@ export interface Note {
   escalation_article_id?: string | null;
   escalation_retry_count?: number;
   deleted_at?: string | null;
+  related_articles?: { article_id: string; title: string; rank: number }[];
 }
 
 export interface VaultPage {

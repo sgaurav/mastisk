@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import re
+import sqlite3
 import tempfile
 from datetime import datetime
 from html import unescape
@@ -185,9 +186,9 @@ async def get_note_file_endpoint(note_id: int) -> PlainTextResponse:
 async def get_note_endpoint(note_id: int) -> dict:
     with connect() as conn:
         row = q.get_note(conn, note_id)
-    if row is None:
-        raise HTTPException(status_code=404, detail="note not found")
-    return _note_detail(row)
+        if row is None:
+            raise HTTPException(status_code=404, detail="note not found")
+        return _note_detail(row, conn)
 
 
 @router.delete("/{note_id}", status_code=204)
@@ -221,8 +222,28 @@ def _note_summary(row: dict) -> dict:
     }
 
 
-def _note_detail(row: dict) -> dict:
-    """Full view — includes body and all escalation fields."""
+def _note_detail(row: dict, conn: sqlite3.Connection | None = None) -> dict:
+    """Full view — includes body, escalation fields, and related articles.
+
+    ``conn`` is optional so the function stays callable in isolation; when
+    provided, we join ``note_links`` → ``articles`` to surface the articles
+    the Notetaker (or a direct user-action link) associated with this note,
+    ordered by ``rank`` (0 = direct user-action, 1+ = classifier-driven).
+    """
+    related: list[dict] = []
+    if conn is not None:
+        rows = conn.execute(
+            """SELECT nl.article_id, a.title, nl.rank
+               FROM note_links nl
+               JOIN articles a ON a.id = nl.article_id
+               WHERE nl.note_id = ?
+               ORDER BY nl.rank ASC""",
+            (row["id"],),
+        ).fetchall()
+        related = [
+            {"article_id": r["article_id"], "title": r["title"], "rank": r["rank"]}
+            for r in rows
+        ]
     return {
         **_note_summary(row),
         "body": row["body"],
@@ -232,6 +253,7 @@ def _note_detail(row: dict) -> dict:
         "escalation_article_id": row["escalation_article_id"],
         "escalation_retry_count": row["escalation_retry_count"],
         "deleted_at": row["deleted_at"],
+        "related_articles": related,
     }
 
 
