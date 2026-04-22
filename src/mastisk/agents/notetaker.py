@@ -36,7 +36,7 @@ from mastisk.agents.base import Agent
 from mastisk.bridges import ollama_bridge
 from mastisk.db import queries as q
 from mastisk.db.queries import connect
-from mastisk.paths import notes_dir, notes_inbox_dir, vault_dir
+from mastisk.paths import notes_daily_dir, notes_dir, notes_inbox_dir, vault_dir
 from mastisk.settings import get_settings
 
 log = logging.getLogger("mastisk.notetaker")
@@ -380,6 +380,17 @@ class Notetaker(Agent):
             },
         )
 
+        # Phase 3: regenerate the daily digest for this note's date. Best-effort —
+        # classification already succeeded, so a digest failure mustn't fail the
+        # job. The next classification on the same date will re-attempt.
+        try:
+            with connect() as conn:
+                write_daily_digest(conn, created_dt.strftime("%Y-%m-%d"))
+        except Exception:
+            log.exception(
+                "notetaker: daily digest regen failed for note %s (non-fatal)", note_id
+            )
+
         # TODO(phase-4-5): enqueue escalator 'evaluate' job here
         # from mastisk.agents.base import enqueue
         # enqueue("escalator", "evaluate", {"note_id": note_id})
@@ -422,6 +433,83 @@ def write_frontmatter(path: Path, body_text: str, frontmatter: dict) -> None:
     except Exception:
         Path(tmp).unlink(missing_ok=True)
         raise
+
+
+def write_daily_digest(conn: sqlite3.Connection, date_str: str) -> Path:
+    """(Re)generate the daily digest for a given date.
+
+    Format: a markdown page with YAML frontmatter (tiny) + one section per note,
+    chronological. Meant to be read in Obsidian/Files. Regenerable from the DB
+    at any time — delete it and the next Notetaker tick will rebuild it.
+
+    Returns the absolute path written.
+    """
+    rows = conn.execute(
+        """SELECT id, slug, path, created_at, classification, summary, tags_json, body
+           FROM notes
+           WHERE DATE(created_at) = ?
+             AND classified_at IS NOT NULL
+             AND deleted_at IS NULL
+           ORDER BY created_at ASC, id ASC""",
+        (date_str,),
+    ).fetchall()
+
+    digest_dir = notes_daily_dir()
+    digest_dir.mkdir(parents=True, exist_ok=True)
+    out = digest_dir / f"{date_str}.md"
+
+    fm = {
+        "date": date_str,
+        "note_count": len(rows),
+        "generated_at": datetime.now().astimezone().isoformat(),
+    }
+    fm_yaml = yaml.safe_dump(fm, sort_keys=False, default_flow_style=False).strip()
+
+    lines: list[str] = [f"---\n{fm_yaml}\n---\n", f"# Notes · {date_str}\n"]
+    if not rows:
+        lines.append("*(no classified notes yet for this date)*\n")
+    for r in rows:
+        # Time-of-day anchor: pull HH:MM from the ISO timestamp.
+        ts = r["created_at"]
+        try:
+            hhmm = datetime.fromisoformat(ts).strftime("%H:%M")
+        except Exception:
+            hhmm = ts[11:16] if len(ts) >= 16 else "??:??"
+        classification = r["classification"] or "?"
+        summary = (r["summary"] or "").strip() or r["slug"]
+        try:
+            tags = json.loads(r["tags_json"] or "[]") or []
+        except Exception:
+            tags = []
+        tag_str = " ".join(f"#{t}" for t in tags)
+        # Relative link from daily/ to the note's file (always resolves via iCloud).
+        relative_to_daily = Path("..") / Path(r["path"]).relative_to(Path("_notes"))
+        lines.append(f"## {hhmm} · {classification} — {summary}\n")
+        if tag_str:
+            lines.append(f"*{tag_str}*\n")
+        lines.append(f"[Open note]({relative_to_daily.as_posix()})\n")
+        # Small excerpt: first 200 chars after stripping frontmatter + "> From"
+        # context preamble lines.
+        body = r["body"] or ""
+        body_core = strip_frontmatter(body) if body.startswith("---\n") else body
+        core_lines = [ln for ln in body_core.splitlines() if not ln.startswith("> ")]
+        core_text = "\n".join(core_lines).strip()
+        if core_text:
+            excerpt = core_text[:200] + ("…" if len(core_text) > 200 else "")
+            lines.append(f"> {excerpt}\n")
+        lines.append("")  # blank between entries
+
+    content = "\n".join(lines).rstrip() + "\n"
+    # Atomic write (match write_frontmatter's pattern).
+    fd, tmp = tempfile.mkstemp(prefix=f".{out.name}.", suffix=".tmp", dir=out.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.rename(tmp, out)
+    except Exception:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+    return out
 
 
 def _extract_json(text: str) -> dict:

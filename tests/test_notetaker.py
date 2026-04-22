@@ -303,3 +303,81 @@ def test_notetaker_skips_dotfile(notetaker, vault_tmp):
     with connect() as conn:
         rows = conn.execute("SELECT COUNT(*) AS n FROM notes").fetchone()
     assert rows["n"] == 0
+
+
+# ─────────────────────────────── daily digest ───────────────────────────────
+
+
+def test_write_daily_digest_empty(db, vault_tmp):
+    """No notes for the date → digest file written with an empty state."""
+    from mastisk.agents.notetaker import write_daily_digest
+    p = write_daily_digest(db, "2026-04-21")
+    assert p.exists()
+    text = p.read_text()
+    assert text.startswith("---")
+    assert "date: '2026-04-21'" in text or 'date: "2026-04-21"' in text
+    assert "note_count: 0" in text
+    assert "no classified notes yet" in text
+
+
+def test_write_daily_digest_renders_classified_notes(db, vault_tmp):
+    """Seed two classified notes on the same date; digest lists both in time order."""
+    from datetime import datetime
+    import json as _json
+    from mastisk.agents.notetaker import write_daily_digest
+
+    # Two notes on 2026-04-21
+    for (hh, mm, slug, summary, cls, tags) in [
+        ("09", "15", "091500-foo", "first thought of the day", "insight", ["morning"]),
+        ("14", "02", "140200-bar", "afternoon reflection", "idea", ["ai", "compound"]),
+    ]:
+        ts = datetime(2026, 4, 21, int(hh), int(mm)).astimezone().isoformat()
+        db.execute(
+            """INSERT INTO notes (slug, path, body, body_sha256, source,
+                                   created_at, classified_at, classification, summary, tags_json)
+               VALUES (?, ?, ?, 'sha', 'pwa', ?, ?, ?, ?, ?)""",
+            (slug, f"_notes/2026-04-21/{slug}.md", f"body of {slug}",
+             ts, ts, cls, summary, _json.dumps(tags)),
+        )
+
+    # And an unclassified note on the same date — should be excluded
+    db.execute(
+        """INSERT INTO notes (slug, path, body, body_sha256, source, created_at)
+           VALUES ('120000-unclassified', '_notes/inbox/120000-unclassified.md',
+                   'raw', 'sha2', 'pwa', ?)""",
+        (datetime(2026, 4, 21, 12, 0).astimezone().isoformat(),),
+    )
+
+    p = write_daily_digest(db, "2026-04-21")
+    text = p.read_text()
+    # Both classified notes render
+    assert "09:15" in text
+    assert "14:02" in text
+    assert "first thought of the day" in text
+    assert "afternoon reflection" in text
+    assert "insight" in text
+    assert "idea" in text
+    assert "#morning" in text
+    assert "#ai" in text
+    # Unclassified excluded
+    assert "120000-unclassified" not in text
+    # note_count is 2
+    assert "note_count: 2" in text
+
+
+def test_daily_digest_excludes_deleted_notes(db, vault_tmp):
+    """Deleted notes don't show in the digest."""
+    from datetime import datetime
+    from mastisk.agents.notetaker import write_daily_digest
+    ts = datetime(2026, 4, 21, 10, 0).astimezone().isoformat()
+    db.execute(
+        """INSERT INTO notes (slug, path, body, body_sha256, source,
+                               created_at, classified_at, classification, summary, deleted_at)
+           VALUES ('100000-gone', '_notes/2026-04-21/100000-gone.md', 'b', 'sha', 'pwa',
+                   ?, ?, 'rant', 'grumble', ?)""",
+        (ts, ts, ts),
+    )
+    p = write_daily_digest(db, "2026-04-21")
+    text = p.read_text()
+    assert "100000-gone" not in text
+    assert "note_count: 0" in text
