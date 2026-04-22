@@ -28,6 +28,7 @@ import { RoundtablesListView } from './components/RoundtablesListView';
 import { RoundtableView } from './components/RoundtableView';
 import { ReposView } from './components/ReposView';
 import { RepoDetailView } from './components/RepoDetailView';
+import { AddRepoModal } from './components/AddRepoModal';
 
 export function App() {
   const [theme, setTheme] = useState<'light' | 'dark'>(
@@ -42,6 +43,10 @@ export function App() {
   const [railOpen, setRailOpen] = useState(window.innerWidth > 900);
   const [askOpen, setAskOpen] = useState(false);
   const [captureOpen, setCaptureOpen] = useState(false);
+  const [addRepoOpen, setAddRepoOpen] = useState(false);
+  // Bumped after a successful add-repo, so ReposView re-fetches its list when
+  // we're already on /repos (navigating there is a no-op in that case).
+  const [reposReloadKey, setReposReloadKey] = useState(0);
   const [askCtx, setAskCtx] = useState<{ prompt: string; selection: string | null; article_id?: string } | null>(null);
 
   const [sidebar, setSidebar] = useState<{ vault: VaultItem[]; pinned: PinnedItem[]; user: import('./types').UserInfo } | null>(null);
@@ -155,6 +160,8 @@ export function App() {
           currentView={view}
           currentArticle={currentArticle ?? ''}
           onNavigate={navigate}
+          onAddRepo={() => setAddRepoOpen(true)}
+          onCaptureNote={() => setCaptureOpen(true)}
         />
       )}
 
@@ -176,7 +183,13 @@ export function App() {
         {view === 'roundtable' && currentRoundtable !== null && (
           <RoundtableView roundtableId={currentRoundtable} onNavigate={navigate}/>
         )}
-        {view === 'repos' && <ReposView onNavigate={navigate}/>}
+        {view === 'repos' && (
+          <ReposView
+            onNavigate={navigate}
+            onAddRepo={() => setAddRepoOpen(true)}
+            reloadKey={reposReloadKey}
+          />
+        )}
         {view === 'repo' && route.repoSlug && <RepoDetailView slug={route.repoSlug} onNavigate={navigate}/>}
         {view === 'mobile' && (
           <div className="view">
@@ -208,6 +221,18 @@ export function App() {
         open={captureOpen}
         onClose={() => setCaptureOpen(false)}
         onCaptured={(id) => navigate('note', String(id))}
+      />
+      <AddRepoModal
+        open={addRepoOpen}
+        onClose={() => setAddRepoOpen(false)}
+        onAdded={() => {
+          setAddRepoOpen(false);
+          // Bump the reload key so ReposView re-fetches if it's already mounted,
+          // and also navigate — covers the case where user was elsewhere in the app.
+          setReposReloadKey((k) => k + 1);
+          navigate('repos');
+        }}
+        onNavigate={navigate}
       />
       {toast && (
         <div

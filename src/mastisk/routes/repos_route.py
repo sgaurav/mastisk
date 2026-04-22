@@ -8,6 +8,7 @@ from mastisk.agents.base import enqueue
 from mastisk.bridges import github_bridge
 from mastisk.db import queries as q
 from mastisk.db.queries import connect
+from mastisk.settings import get_settings
 
 router = APIRouter(prefix="/api/repos", tags=["repos"])
 
@@ -33,7 +34,16 @@ async def add_repo_endpoint(req: AddRepoRequest) -> dict:
     try:
         meta = await github_bridge.fetch_repo_metadata(owner, name)
     except github_bridge.GithubNotFound:
-        raise HTTPException(status_code=404, detail="repo not found on GitHub (or PAT can't see it)")
+        # Tailor the hint to whether a PAT is configured. Without a PAT, a 404
+        # most often means the repo is private and unreachable — so point the
+        # user at Settings. With a PAT, the more likely cause is the PAT not
+        # having access to this specific org/repo.
+        has_pat = bool(get_settings().github.pat)
+        if has_pat:
+            detail = "repo not found on GitHub (or your PAT doesn't have access to it)"
+        else:
+            detail = "repo not found. If this is a private repo, add a GitHub PAT via Settings → GitHub, then retry."
+        raise HTTPException(status_code=404, detail=detail)
     except github_bridge.GithubAuthError:
         raise HTTPException(status_code=401, detail="GitHub PAT invalid or missing scope")
     except github_bridge.GithubRateLimited:

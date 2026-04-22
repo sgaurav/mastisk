@@ -103,3 +103,38 @@ def test_ideate_now_enqueues(client, db):
 def test_ideate_now_404_on_unknown(client):
     r = client.post("/api/repos/gone/gone/ideate-now")
     assert r.status_code == 404
+
+
+def test_add_repo_404_message_varies_by_pat_config(client, monkeypatch):
+    """When no PAT is configured, the 404 hints about private repos."""
+    from mastisk.bridges import github_bridge
+    async def raise_nf(o, n): raise github_bridge.GithubNotFound("nope")
+    with patch("mastisk.routes.repos_route.github_bridge.fetch_repo_metadata", side_effect=raise_nf):
+        # Ensure no PAT
+        monkeypatch.setenv("MASTISK_GITHUB_PAT", "")
+        # Reload settings so the empty PAT takes effect (note: pydantic-settings caches;
+        # reload_settings() clears the lru_cache)
+        from mastisk.settings import reload_settings
+        reload_settings()
+        r = client.post("/api/repos", json={"slug": "nope/nope"})
+    assert r.status_code == 404
+    # Message must suggest PAT when none is set
+    assert "PAT" in r.json()["detail"]
+
+
+def test_add_repo_404_message_with_pat(client, monkeypatch):
+    """When a PAT is configured, the 404 implies the PAT may lack access."""
+    from mastisk.bridges import github_bridge
+    async def raise_nf(o, n): raise github_bridge.GithubNotFound("nope")
+    monkeypatch.setenv("MASTISK_GITHUB_PAT", "ghp_fake_for_test")
+    # pydantic-settings may or may not read this env; if not, patch settings directly:
+    from mastisk.settings import get_settings
+    from unittest.mock import patch as _patch
+    s = get_settings()
+    with _patch.object(s.github, "pat", "ghp_fake_for_test"):
+        with patch("mastisk.routes.repos_route.github_bridge.fetch_repo_metadata", side_effect=raise_nf):
+            r = client.post("/api/repos", json={"slug": "nope/nope"})
+    assert r.status_code == 404
+    # Should mention "doesn't have access" or similar, not "add a PAT"
+    body = r.json()["detail"]
+    assert "access" in body or "doesn't have" in body

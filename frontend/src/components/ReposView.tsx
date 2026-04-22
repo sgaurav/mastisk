@@ -4,22 +4,24 @@ import type { RepoSummary, View } from '../types';
 
 interface Props {
   onNavigate: (view: View, id?: string) => void;
+  onAddRepo: () => void;
+  reloadKey?: number;
 }
 
-export function ReposView({ onNavigate }: Props) {
+export function ReposView({ onNavigate, onAddRepo, reloadKey }: Props) {
   const [rows, setRows] = useState<RepoSummary[] | null>(null);
-  const [addOpen, setAddOpen] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const reload = () => {
+  useEffect(() => {
     api.repos.list()
       .then(setRows)
       .catch((e) => setErr(e instanceof Error ? e.message : 'failed'));
-  };
-  useEffect(reload, []);
+  }, [reloadKey]);
 
   if (err) return <div className="view"><p style={{ color: 'var(--danger, crimson)' }}>{err}</p></div>;
   if (!rows) return <div className="view"><p style={{ color: 'var(--fg-faint)', fontFamily: 'var(--mono)', fontSize: 12 }}>loading…</p></div>;
+
+  const isEmpty = rows.length === 0;
 
   return (
     <div className="view">
@@ -28,14 +30,41 @@ export function ReposView({ onNavigate }: Props) {
         <h1 className="view-title" style={{ margin: 0 }}>
           {rows.length} repo{rows.length === 1 ? '' : 's'}
         </h1>
-        <button onClick={() => setAddOpen(true)}>+ add repo</button>
+        {!isEmpty && <button onClick={onAddRepo}>+ add repo</button>}
       </div>
 
-      {rows.length === 0 && (
-        <p className="view-sub">
-          Track a GitHub repo and mastisk will poll it hourly, build rolling context, and generate 4 idea-notes per repo per day.
-          Click "+ add repo" or run <code>mastisk add-repo owner/name</code>.
-        </p>
+      {isEmpty && (
+        <div style={{ marginTop: 8 }}>
+          <p className="view-sub" style={{ marginBottom: 12 }}>
+            Track a GitHub repo and mastisk will poll it hourly, build rolling context, and generate 4 idea-notes per repo per day.
+          </p>
+          <p className="view-sub" style={{ marginBottom: 16 }}>
+            Try <code>anthropics/claude-code</code> — pulls the README + recent commits + open issues.
+            Private repos need a GitHub PAT in <a
+              href="#settings"
+              onClick={(e) => { e.preventDefault(); onNavigate('settings'); }}
+              style={{ color: 'var(--accent, #0a7)', textDecoration: 'underline', cursor: 'pointer' }}
+            >Settings</a>.
+          </p>
+          <button
+            onClick={onAddRepo}
+            style={{
+              padding: '10px 18px',
+              fontSize: 14,
+              fontWeight: 600,
+              background: 'var(--accent, #0a7)',
+              color: 'var(--bg, white)',
+              border: '1px solid var(--accent, #0a7)',
+              borderRadius: 6,
+              cursor: 'pointer',
+            }}
+          >
+            + add your first repo
+          </button>
+          <p className="view-sub" style={{ marginTop: 12, fontSize: 11 }}>
+            Or run <code>mastisk add-repo owner/name</code> from the CLI.
+          </p>
+        </div>
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
@@ -60,79 +89,6 @@ export function ReposView({ onNavigate }: Props) {
             {r.description && <div style={{ fontSize: 13, marginTop: 4 }}>{r.description}</div>}
           </button>
         ))}
-      </div>
-
-      {addOpen && (
-        <AddRepoModal
-          onClose={() => setAddOpen(false)}
-          onAdded={() => { setAddOpen(false); reload(); }}
-        />
-      )}
-    </div>
-  );
-}
-
-
-function AddRepoModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
-  const [slug, setSlug] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const submit = async () => {
-    const trimmed = slug.trim();
-    if (!trimmed || !trimmed.includes('/')) {
-      setError('expected owner/repo');
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      await api.repos.add(trimmed);
-      onAdded();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'failed');
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div
-      style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)',
-        display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-        paddingTop: '10vh', zIndex: 1000,
-      }}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          background: 'var(--bg)', border: '1px solid var(--border)',
-          borderRadius: 8, padding: 16, width: 'min(440px, 92vw)',
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div style={{ fontSize: 12, color: 'var(--fg-faint)', marginBottom: 8, fontFamily: 'var(--mono)' }}>
-          add a GitHub repo
-        </div>
-        <input
-          autoFocus
-          value={slug}
-          onChange={(e) => setSlug(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') void submit(); if (e.key === 'Escape') onClose(); }}
-          disabled={busy}
-          placeholder="owner/repo"
-          style={{
-            width: '100%', boxSizing: 'border-box',
-            background: 'transparent', color: 'var(--fg)',
-            border: '1px solid var(--border)', borderRadius: 4,
-            padding: 8, fontFamily: 'var(--mono)', fontSize: 14,
-          }}
-        />
-        {error && <div style={{ color: 'var(--danger, crimson)', marginTop: 6, fontSize: 12 }}>{error}</div>}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
-          <button onClick={onClose} disabled={busy}>cancel</button>
-          <button onClick={submit} disabled={busy || !slug.trim()}>{busy ? 'verifying…' : 'add'}</button>
-        </div>
       </div>
     </div>
   );

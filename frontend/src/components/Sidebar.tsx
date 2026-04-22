@@ -8,11 +8,13 @@ interface Props {
   currentView: View;
   currentArticle: string;
   onNavigate: (view: View, id?: string) => void;
+  onAddRepo: () => void;
+  onCaptureNote: () => void;
 }
 
 const SYS_VIEWS = new Set<View>(['digest', 'queue', 'feed', 'agents', 'graph', 'ingest', 'lint', 'settings', 'open_questions', 'notes', 'roundtables', 'repos']);
 
-export function Sidebar({ vault, pinned, user, currentView, currentArticle, onNavigate }: Props) {
+export function Sidebar({ vault, pinned, user, currentView, currentArticle, onNavigate, onAddRepo, onCaptureNote }: Props) {
   // Folders are collapsed by default. A label appearing in `opened` with value
   // true means the user has expanded it. Kept in-memory per session — no
   // persistence, since recall of "which sections were open last week" isn't a
@@ -54,12 +56,26 @@ export function Sidebar({ vault, pinned, user, currentView, currentArticle, onNa
         return <Row key={item.id} item={item} currentArticle={currentArticle} currentView={currentView} onNavigate={onNavigate} />;
       })}
       {/* Hand-coded extras (not in backend vault_tree yet) */}
-      <div
-        className={`side-row ${currentView === 'notes' || currentView === 'note' ? 'active' : ''}`}
-        onClick={() => onNavigate('notes')}
-      >
-        <span className="glyph">✎</span>
-        <span className="label">Notes</span>
+      <div className="side-row-group" style={{ display: 'flex', alignItems: 'center' }}>
+        <div
+          className={`side-row ${currentView === 'notes' || currentView === 'note' ? 'active' : ''}`}
+          onClick={() => onNavigate('notes')}
+          style={{ flex: 1 }}
+        >
+          <span className="glyph">✎</span>
+          <span className="label">Notes</span>
+        </div>
+        <button
+          onClick={(e) => { e.stopPropagation(); onCaptureNote(); }}
+          title="Capture a note"
+          aria-label="Capture a note"
+          style={{
+            background: 'transparent', border: 'none', color: 'var(--fg-faint)',
+            fontSize: 14, cursor: 'pointer', padding: '2px 6px',
+          }}
+        >
+          +
+        </button>
       </div>
       <div
         className={`side-row ${currentView === 'roundtables' || currentView === 'roundtable' ? 'active' : ''}`}
@@ -68,12 +84,26 @@ export function Sidebar({ vault, pinned, user, currentView, currentArticle, onNa
         <span className="glyph">◎</span>
         <span className="label">Roundtables</span>
       </div>
-      <div
-        className={`side-row ${currentView === 'repos' || currentView === 'repo' ? 'active' : ''}`}
-        onClick={() => onNavigate('repos')}
-      >
-        <span className="glyph">⎇</span>
-        <span className="label">Repos</span>
+      <div className="side-row-group" style={{ display: 'flex', alignItems: 'center' }}>
+        <div
+          className={`side-row ${currentView === 'repos' || currentView === 'repo' ? 'active' : ''}`}
+          onClick={() => onNavigate('repos')}
+          style={{ flex: 1 }}
+        >
+          <span className="glyph">⎇</span>
+          <span className="label">Repos</span>
+        </div>
+        <button
+          onClick={(e) => { e.stopPropagation(); onAddRepo(); }}
+          title="Add a repo"
+          aria-label="Add a repo"
+          style={{
+            background: 'transparent', border: 'none', color: 'var(--fg-faint)',
+            fontSize: 14, cursor: 'pointer', padding: '2px 6px',
+          }}
+        >
+          +
+        </button>
       </div>
       {user && (
         <div className="user-pill" onClick={() => onNavigate('ingest')} role="button" title="Sources & ingest">
