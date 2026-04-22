@@ -529,6 +529,67 @@ def add_podcast(url: str):
     )
 
 
+@app.command()
+def note(
+    text: str | None = typer.Argument(None, help="Note body. If omitted, $EDITOR opens."),
+) -> None:
+    """Capture a note. Writes to vault/_notes/inbox/ and indexes it in the DB.
+
+    Examples:
+        mastisk note "test-time compute is about spending inference cycles"
+        mastisk note   # opens $EDITOR
+    """
+    import os
+    import subprocess
+    import tempfile
+
+    from mastisk.paths import ensure_dirs
+
+    ensure_dirs()
+    _ensure_db()
+
+    if text is None:
+        editor = os.environ.get("EDITOR", "vi")
+        with tempfile.NamedTemporaryFile(mode="w+", suffix=".md", delete=False) as tf:
+            tf.write("# Write your note here; save and quit to capture.\n\n")
+            tf.flush()
+            tmp_path = tf.name
+        try:
+            subprocess.run([editor, tmp_path], check=True)
+            text = open(tmp_path).read()
+            text = text.replace("# Write your note here; save and quit to capture.\n\n", "", 1).strip()
+        finally:
+            os.unlink(tmp_path)
+
+    if not text or not text.strip():
+        typer.secho("nothing to capture (empty note)", fg="yellow")
+        raise typer.Exit(code=1)
+
+    from datetime import datetime
+
+    from mastisk.db import queries as q
+    from mastisk.db.queries import connect
+    from mastisk.paths import notes_inbox_dir, vault_dir
+    from mastisk.routes.notes import atomic_write, derive_slug
+
+    ts = datetime.now().astimezone()
+    slug = derive_slug(text, ts)
+    filename = f"{slug}.md"
+    target = notes_inbox_dir() / filename
+    atomic_write(target, text)
+    rel_path = str(target.relative_to(vault_dir()))
+    with connect() as conn:
+        note_id = q.insert_note(
+            conn, slug=slug, path=rel_path, body=text,
+            source="cli", created_at=ts,
+        )
+        row = q.get_note(conn, note_id)
+    actual_path = vault_dir() / row["path"]
+    if actual_path != target:
+        target.rename(actual_path)
+    typer.secho(f"captured #{note_id}: {row['slug']}", fg="green")
+
+
 # ═════════════════════════════════ url / logs / vault-path ═════════════════════════════════
 
 @app.command()
