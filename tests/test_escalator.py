@@ -453,3 +453,73 @@ def test_post_escalate_endpoint_404_on_unknown(db, vault_tmp, data_tmp):
     with TestClient(app) as client:
         r = client.post("/api/notes/99999/escalate")
     assert r.status_code == 404
+
+
+# ─────────────────────────── manual re-escalation on terminal state ───────────────────────────
+
+
+def test_manual_escalate_on_already_done_creates_second_stub(escalator, db, vault_tmp):
+    """A note already in ``auto_done`` with a stub can be manually re-escalated (§9.3 step 2).
+
+    Manual trigger bypasses the terminal-state guard in ``_evaluate``. The second
+    stub collides on base id (same note_id + same title slug) and falls through
+    to the ``-2`` suffix via ``ensure_note_stub_article``'s collision handler.
+    """
+    # Seed an already-escalated note: auto_done, prior stub article, prior
+    # note_escalations row (so dedup would skip a fresh auto-trigger).
+    note_id = _seed_note(db, escalation_state="none")  # fresh note_id
+
+    # Hand-craft the existing stub at the id the escalator would compute for
+    # title="compounding knowledge" → slug "compounding-knowledge".
+    prior_stub_id = f"note-{note_id:06d}-compounding-knowledge"
+    db.execute(
+        """INSERT INTO articles (id, kind, title, slug, aka_json, summary, body_md,
+                                  confidence, reading_minutes, updated_by, vault_path,
+                                  source_note_id)
+           VALUES (?, 'Concept', 'compounding knowledge', ?, '[]',
+                   'prior stub summary', 'prior body', 0.0, 1, 'escalator (stub)', NULL, ?)""",
+        (prior_stub_id, prior_stub_id, note_id),
+    )
+    # Move the note to auto_done referencing that stub.
+    now_iso = datetime.now().astimezone().isoformat()
+    db.execute(
+        """UPDATE notes SET escalation_state='auto_done', escalation_trigger='auto',
+                             escalation_article_id=?
+           WHERE id=?""",
+        (prior_stub_id, note_id),
+    )
+    db.execute(
+        """INSERT INTO note_escalations
+             (note_id, triggered_at, trigger, result, stub_article_id, model)
+           VALUES (?, ?, 'auto', 'stub_created', ?, 'claude')""",
+        (note_id, now_iso, prior_stub_id),
+    )
+
+    # Manual escalate — should bypass the terminal-state guard and run Claude.
+    _enqueue_evaluate(note_id, trigger="manual")
+    with _patch_claude() as mock_claude:
+        asyncio.run(escalator.run_once())
+    assert mock_claude.call_count == 1
+
+    row = db.execute("SELECT * FROM notes WHERE id=?", (note_id,)).fetchone()
+    assert row["escalation_state"] == "manual_done"
+    # The note's escalation_article_id now points to the NEW stub (suffix -2).
+    assert row["escalation_article_id"] == f"{prior_stub_id}-2"
+
+    # Both stubs exist.
+    stubs = db.execute(
+        "SELECT id FROM articles WHERE source_note_id=? ORDER BY id",
+        (note_id,),
+    ).fetchall()
+    assert [s["id"] for s in stubs] == [prior_stub_id, f"{prior_stub_id}-2"]
+
+    # Two note_escalations rows (prior auto + new manual).
+    escs = db.execute(
+        "SELECT trigger, result, stub_article_id FROM note_escalations "
+        "WHERE note_id=? ORDER BY id",
+        (note_id,),
+    ).fetchall()
+    assert len(escs) == 2
+    assert escs[1]["trigger"] == "manual"
+    assert escs[1]["result"] == "stub_created"
+    assert escs[1]["stub_article_id"] == f"{prior_stub_id}-2"

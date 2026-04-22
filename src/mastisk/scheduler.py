@@ -78,6 +78,22 @@ async def start_scheduler():
         log.info("escalator not scheduled: %s", e)
 
     try:
+        from mastisk.agents.vault_integrity import vault_integrity_scan
+        # Tombstones notes whose vault file was deleted externally (Obsidian,
+        # Finder, iOS Files). 5min tick is plenty — this is slow drift, not a
+        # hot path. First run 30s after boot.
+        sched.add_job(
+            vault_integrity_scan, "interval",
+            minutes=5, id="vault_integrity",
+            max_instances=1,
+            next_run_time=datetime.now(timezone.utc) + timedelta(seconds=30),
+            coalesce=True,
+        )
+        log.info("scheduler: vault_integrity registered (5min tick)")
+    except Exception as e:
+        log.warning("scheduler: vault_integrity registration failed: %s", e)
+
+    try:
         from mastisk.agents.linter import Linter
         # Linter runs slightly after Scout/Compiler so it sees fresh articles
         # on the same boot without racing them.

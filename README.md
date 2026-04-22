@@ -208,7 +208,7 @@ Three ways, any combination:
 - **CLI:** `mastisk note "a quick thought"` or `mastisk note` (opens `$EDITOR`).
 - **Any editor:** drop a `.md` file into `vault/_notes/inbox/` — Obsidian, Files app, vim, iOS Shortcut to Files, etc.
 
-Notes live in `vault/_notes/YYYY-MM-DD/` once classified. Phase 2 (classification by the Notetaker agent) is next.
+Classified notes land in `vault/_notes/YYYY-MM-DD/` with YAML frontmatter. Notes tagged as ideas/questions can auto-escalate to wiki article stubs (see `config.toml → [notes]` for the auto-rule).
 
 ---
 
