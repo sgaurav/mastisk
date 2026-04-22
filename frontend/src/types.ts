@@ -53,6 +53,26 @@ export interface Article {
   media?: ArticleMedia[];
 }
 
+export interface Note {
+  id: number;
+  slug: string;
+  path: string;
+  source: 'pwa' | 'cli' | 'file';
+  created_at: string;
+  classified_at: string | null;
+  classification: string | null;
+  summary: string | null;
+  tags: string[];
+  escalation_state: string;
+  body?: string;
+  body_sha256?: string;
+  confidence?: number | null;
+  escalation_trigger?: string | null;
+  escalation_article_id?: string | null;
+  escalation_retry_count?: number;
+  deleted_at?: string | null;
+}
+
 export interface VaultPage {
   kind: 'page';
   id: string;
@@ -200,7 +220,8 @@ export interface AskResponse {
 export type View =
   | 'article' | 'digest' | 'feed' | 'agents'
   | 'graph' | 'mobile' | 'queue' | 'ingest' | 'lint' | 'settings'
-  | 'open_questions';
+  | 'open_questions'
+  | 'notes' | 'note';
 
 export interface BudgetValues {
   scout: number;

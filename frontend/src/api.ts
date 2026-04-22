@@ -1,6 +1,6 @@
 import type {
   Article, ArticlePreview, Artifact, ArtifactKind, AskResponse, Digest, Feed,
-  FeedTick, AgentInfo, GraphData, Job, OpenQuestionsResponse, PendingSynthesisResponse,
+  FeedTick, AgentInfo, GraphData, Job, Note, OpenQuestionsResponse, PendingSynthesisResponse,
   PinnedItem, SettingsBundle, SettingsPatch, SynthesisRunResponse, UserInfo, VaultItem,
 } from './types';
 
@@ -182,4 +182,27 @@ export const api = {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ feedback: feedback ?? null }),
     }),
+
+  notes: {
+    create: (text: string): Promise<{ id: number; slug: string; path: string }> =>
+      fetch('/api/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, source: 'pwa' }),
+      }).then(r => { if (!r.ok) throw new Error(`${r.status}`); return r.json(); }),
+
+    list: (limit = 50): Promise<Note[]> =>
+      fetch(`/api/notes?limit=${limit}`).then(r => r.json()),
+
+    get: (id: number): Promise<Note> =>
+      fetch(`/api/notes/${id}`).then(r => {
+        if (r.status === 404) throw new Error('not found');
+        return r.json();
+      }),
+
+    delete: (id: number): Promise<void> =>
+      fetch(`/api/notes/${id}`, { method: 'DELETE' }).then(r => {
+        if (!r.ok) throw new Error(`${r.status}`);
+      }),
+  },
 };
