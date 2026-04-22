@@ -21,6 +21,9 @@ import { QueueView } from './components/QueueView';
 import { SettingsView } from './components/SettingsView';
 import { SystemCheckView } from './components/SystemCheckView';
 import { WikiLinkHoverProvider } from './components/WikiLinkHover';
+import { NotesView } from './components/NotesView';
+import { NoteView } from './components/NoteView';
+import { NoteCaptureModal } from './components/NoteCaptureModal';
 
 export function App() {
   const [theme, setTheme] = useState<'light' | 'dark'>(
@@ -28,11 +31,12 @@ export function App() {
   );
 
   const { route, navigate: routeNavigate, replace } = useRoute();
-  const { view, articleId: currentArticle, date: currentDate } = route;
+  const { view, articleId: currentArticle, noteId: currentNote, date: currentDate } = route;
 
   const [sideOpen, setSideOpen] = useState(window.innerWidth > 900);
   const [railOpen, setRailOpen] = useState(window.innerWidth > 900);
   const [askOpen, setAskOpen] = useState(false);
+  const [captureOpen, setCaptureOpen] = useState(false);
   const [askCtx, setAskCtx] = useState<{ prompt: string; selection: string | null; article_id?: string } | null>(null);
 
   const [sidebar, setSidebar] = useState<{ vault: VaultItem[]; pinned: PinnedItem[]; user: import('./types').UserInfo } | null>(null);
@@ -114,6 +118,7 @@ export function App() {
         onToggleRail={() => setRailOpen((s) => !s)}
         onAsk={() => openAsk("What's most important in my wiki right now?", null)}
         onSearchClick={() => openAsk("", null)}
+        onCapture={() => setCaptureOpen(true)}
       />
 
       {sideOpen && sidebar && (
@@ -139,6 +144,8 @@ export function App() {
         {view === 'queue' && <QueueView onNavigate={navigate}/>}
         {view === 'lint' && <SystemCheckView/>}
         {view === 'settings' && <SettingsView/>}
+        {view === 'notes' && <NotesView onNavigate={navigate}/>}
+        {view === 'note' && currentNote !== null && <NoteView noteId={currentNote} onNavigate={navigate}/>}
         {view === 'mobile' && (
           <div className="view">
             <div className="view-h">System</div>
@@ -165,6 +172,11 @@ export function App() {
       )}
 
       <AskDrawer open={askOpen} ctx={askCtx} onClose={() => setAskOpen(false)}/>
+      <NoteCaptureModal
+        open={captureOpen}
+        onClose={() => setCaptureOpen(false)}
+        onCaptured={(id) => navigate('note', String(id))}
+      />
       <WikiLinkHoverProvider/>
     </div>
   );
