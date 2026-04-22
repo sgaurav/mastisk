@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 from datetime import datetime
+from html import unescape
 from pathlib import Path
 from typing import Literal
 
@@ -19,9 +21,23 @@ from mastisk.paths import notes_inbox_dir, vault_dir
 router = APIRouter(prefix="/api/notes", tags=["notes"])
 
 
+class CaptureContext(BaseModel):
+    """Origin metadata for notes captured against an article (e.g. Open Questions).
+
+    All fields other than ``article_id`` are optional so a minimal "Add thought
+    on this article" path works without a section/question, but the full shape
+    is used by the Open Questions flow so the Notetaker sees the originating
+    question during classification.
+    """
+    article_id: str
+    section_heading: str | None = None
+    question_html: str | None = None
+
+
 class CaptureRequest(BaseModel):
     text: str = Field(min_length=1)
     source: Literal["pwa", "cli"] = "pwa"
+    context: CaptureContext | None = None
 
     @field_validator("text")
     @classmethod
@@ -29,6 +45,27 @@ class CaptureRequest(BaseModel):
         if not v.strip():
             raise ValueError("text must be non-blank")
         return v
+
+
+def _build_body_with_context(
+    text: str, ctx: CaptureContext, article_title: str | None
+) -> str:
+    """Prepend a structured preamble so the Notetaker sees context during classification.
+
+    The preamble uses markdown blockquote lines (``> ...``) so it reads naturally
+    when the raw note file is viewed. ``question_html`` is stripped of tags +
+    HTML-unescaped so entities like ``&amp;`` don't leak into the stored body.
+    """
+    lines = [f"> From article: {article_title or ctx.article_id}"]
+    if ctx.section_heading:
+        lines.append(f"> Section: {ctx.section_heading}")
+    if ctx.question_html:
+        bare = re.sub(r"<[^>]+>", "", ctx.question_html)
+        bare = unescape(bare).strip()
+        if bare:
+            lines.append(f"> Question: {bare}")
+    preamble = "\n".join(lines)
+    return f"{preamble}\n\n{text}"
 
 
 def derive_slug(body: str, ts: datetime) -> str:
@@ -55,19 +92,37 @@ def atomic_write(target: Path, content: str) -> None:
 
 @router.post("", status_code=201)
 async def capture_note(req: CaptureRequest) -> dict:
+    # If context was provided, validate the article exists *before* writing
+    # anything to disk — a 404 here means nothing to clean up.
+    article_title: str | None = None
+    if req.context is not None:
+        with connect() as conn:
+            art = conn.execute(
+                "SELECT id, title FROM articles WHERE id = ?",
+                (req.context.article_id,),
+            ).fetchone()
+        if art is None:
+            raise HTTPException(status_code=404, detail="article not found")
+        article_title = art["title"]
+        body_for_file = _build_body_with_context(req.text, req.context, article_title)
+    else:
+        body_for_file = req.text
+
     ts = datetime.now().astimezone()
+    # Slug derives from the user's text, not the preamble, so the filename
+    # reflects what the user wrote rather than the article they replied to.
     slug = derive_slug(req.text, ts)
     filename = f"{slug}.md"
     inbox = notes_inbox_dir()
     target = inbox / filename
-    atomic_write(target, req.text)
+    atomic_write(target, body_for_file)
     rel_path = str(target.relative_to(vault_dir()))
     with connect() as conn:
         note_id = q.insert_note(
             conn,
             slug=slug,
             path=rel_path,
-            body=req.text,
+            body=body_for_file,
             source=req.source,
             created_at=ts,
         )
@@ -78,11 +133,24 @@ async def capture_note(req: CaptureRequest) -> dict:
     actual_path = vault_dir() / row["path"]
     if actual_path != target:
         target.rename(actual_path)
+
+    # Direct user-action link (rank=0). Predates the Notetaker's classifier-
+    # driven linking — the user explicitly hit "Add thoughts" on this article.
+    if req.context is not None:
+        with connect() as conn:
+            q.insert_note_link(
+                conn,
+                note_id=note_id,
+                article_id=req.context.article_id,
+                rank=0,
+            )
+
     return {
         "id": note_id,
         "slug": row["slug"],
         "path": row["path"],
         "created_at": row["created_at"],
+        "linked_article_id": req.context.article_id if req.context else None,
     }
 
 
@@ -165,3 +233,20 @@ def _note_detail(row: dict) -> dict:
         "escalation_retry_count": row["escalation_retry_count"],
         "deleted_at": row["deleted_at"],
     }
+
+
+# Separate router for ``/api/articles/{id}/notes`` — lives in this module
+# because it's logically part of the notes API, even though the URL prefix
+# groups it with articles. Same tag as the notes router for OpenAPI grouping.
+articles_notes_router = APIRouter(prefix="/api/articles", tags=["notes"])
+
+
+@articles_notes_router.get("/{article_id}/notes")
+async def list_notes_for_article_endpoint(
+    article_id: str, limit: int = 50
+) -> list[dict]:
+    if limit < 1 or limit > 500:
+        raise HTTPException(status_code=422, detail="limit must be 1..500")
+    with connect() as conn:
+        rows = q.list_notes_for_article(conn, article_id=article_id, limit=limit)
+    return [_note_summary(r) for r in rows]

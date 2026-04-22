@@ -101,3 +101,80 @@ def test_get_note_file_returns_markdown(client):
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/markdown")
     assert "# heading" in r.text
+
+
+# ─────────────────────────────── Phase 1.5: context-linked capture ───────────────────────────────
+
+def test_post_notes_with_context_creates_link_and_preamble(client, vault_tmp, db):
+    # Seed an article. articles.body_md is NOT NULL (no default), so we pass it explicitly.
+    db.execute(
+        "INSERT INTO articles (id, kind, title, slug, body_md) VALUES (?, 'Concept', ?, ?, '')",
+        ("test-article", "Test Article", "test-article"),
+    )
+    r = client.post("/api/notes", json={
+        "text": "my thought on this",
+        "source": "pwa",
+        "context": {
+            "article_id": "test-article",
+            "section_heading": "Open questions",
+            "question_html": "What is the <em>real</em> tension here?",
+        },
+    })
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["linked_article_id"] == "test-article"
+    # note_links row created (rank=0 for direct user-action links)
+    row = db.execute(
+        "SELECT rank FROM note_links WHERE note_id = ? AND article_id = ?",
+        (body["id"], "test-article"),
+    ).fetchone()
+    assert row is not None
+    assert row["rank"] == 0
+    # Body preamble present on disk + in DB
+    file_text = (vault_tmp / body["path"]).read_text()
+    assert "> From article: Test Article" in file_text
+    assert "> Section: Open questions" in file_text
+    assert "> Question: What is the real tension here?" in file_text
+    assert "my thought on this" in file_text
+
+
+def test_post_notes_with_unknown_article_id_returns_404(client):
+    # Using 404 (not 422) to match REST semantics — the request is well-formed
+    # but references a resource that doesn't exist.
+    r = client.post("/api/notes", json={
+        "text": "doesn't matter",
+        "context": {"article_id": "nonexistent-article-slug"},
+    })
+    assert r.status_code == 404
+
+
+def test_post_notes_without_context_has_no_link_and_no_preamble(client, vault_tmp):
+    r = client.post("/api/notes", json={"text": "no context thought"})
+    assert r.status_code == 201
+    body = r.json()
+    assert body["linked_article_id"] is None
+    file_text = (vault_tmp / body["path"]).read_text()
+    assert "> From article" not in file_text
+
+
+def test_list_notes_for_article(client, db):
+    db.execute(
+        "INSERT INTO articles (id, kind, title, slug, body_md) VALUES (?, 'Concept', ?, ?, '')",
+        ("art-a", "Art A", "art-a"),
+    )
+    db.execute(
+        "INSERT INTO articles (id, kind, title, slug, body_md) VALUES (?, 'Concept', ?, ?, '')",
+        ("art-b", "Art B", "art-b"),
+    )
+    r1 = client.post("/api/notes", json={"text": "thought 1", "context": {"article_id": "art-a"}})
+    r2 = client.post("/api/notes", json={"text": "thought 2", "context": {"article_id": "art-a"}})
+    r3 = client.post("/api/notes", json={"text": "thought 3", "context": {"article_id": "art-b"}})
+    assert r1.status_code == r2.status_code == r3.status_code == 201
+
+    r = client.get("/api/articles/art-a/notes")
+    assert r.status_code == 200
+    rows = r.json()
+    assert len(rows) == 2
+    ids_expected = {r1.json()["id"], r2.json()["id"]}
+    ids_returned = {n["id"] for n in rows}
+    assert ids_returned == ids_expected

@@ -70,6 +70,7 @@ def create_app() -> FastAPI:
     app.include_router(synthesis_route.router, prefix="/api")
     app.include_router(listen_route.router, prefix="/api")
     app.include_router(notes.router)
+    app.include_router(notes.articles_notes_router)
 
     @app.get("/api/health")
     def health():

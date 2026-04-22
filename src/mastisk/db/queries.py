@@ -972,3 +972,43 @@ def soft_delete_note(conn: sqlite3.Connection, note_id: int) -> None:
         "UPDATE notes SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL",
         (note_id,),
     )
+
+
+def insert_note_link(
+    conn: sqlite3.Connection,
+    *,
+    note_id: int,
+    article_id: str,
+    rank: int = 0,
+) -> None:
+    """Idempotent insert — primary key is (note_id, article_id) so OR IGNORE no-ops on duplicates.
+
+    ``rank=0`` is reserved for direct user-action links (e.g. "Add thoughts" on an
+    open question). Later classifier-created links should use rank>=1.
+    """
+    conn.execute(
+        """INSERT OR IGNORE INTO note_links (note_id, article_id, rank)
+           VALUES (?, ?, ?)""",
+        (note_id, article_id, rank),
+    )
+
+
+def list_notes_for_article(
+    conn: sqlite3.Connection,
+    *,
+    article_id: str,
+    limit: int = 50,
+) -> list[dict]:
+    """Notes linked to an article via note_links, newest first. Excludes tombstoned."""
+    return [
+        dict(r)
+        for r in conn.execute(
+            """SELECT n.*, nl.rank
+               FROM notes n
+               JOIN note_links nl ON nl.note_id = n.id
+               WHERE nl.article_id = ? AND n.deleted_at IS NULL
+               ORDER BY n.created_at DESC, n.id DESC
+               LIMIT ?""",
+            (article_id, limit),
+        ).fetchall()
+    ]
