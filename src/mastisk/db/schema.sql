@@ -277,3 +277,41 @@ CREATE TABLE IF NOT EXISTS note_escalations (
 
 CREATE INDEX IF NOT EXISTS idx_note_escalations_note         ON note_escalations(note_id);
 CREATE INDEX IF NOT EXISTS idx_note_escalations_triggered_at ON note_escalations(triggered_at);
+
+-- ─────────────────────────────── Roundtables ───────────────────────────────
+-- A roundtable is one fan-out of a prompt to multiple LLMs + one synthesis.
+-- Fully DB-stored (no filesystem artifact), because perspectives are transient
+-- research output, not canonical user content.
+-- See docs/superpowers/specs/2026-04-22-multi-llm-roundtable-design.md §5
+
+CREATE TABLE IF NOT EXISTS roundtables (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  input_type       TEXT NOT NULL,       -- 'note' | 'article' | 'prompt'
+  input_ref        TEXT NOT NULL,       -- stringified note_id | article_id | '' for free prompt
+  prompt           TEXT NOT NULL,       -- the final prompt used
+  status           TEXT NOT NULL DEFAULT 'pending',  -- pending | running | done | failed
+  synthesis        TEXT,
+  synthesis_model  TEXT,
+  error            TEXT,
+  created_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
+  finished_at      DATETIME,
+  saved_as_note_id INTEGER REFERENCES notes(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_roundtables_created ON roundtables(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_roundtables_status  ON roundtables(status) WHERE status IN ('pending', 'running');
+CREATE INDEX IF NOT EXISTS idx_roundtables_input   ON roundtables(input_type, input_ref);
+
+CREATE TABLE IF NOT EXISTS roundtable_perspectives (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  roundtable_id INTEGER NOT NULL REFERENCES roundtables(id) ON DELETE CASCADE,
+  backend       TEXT NOT NULL,         -- 'claude' | 'codex' | 'gemini' | 'ollama'
+  model         TEXT,
+  content       TEXT,
+  error         TEXT,
+  latency_ms    INTEGER,
+  started_at    DATETIME,
+  finished_at   DATETIME
+);
+
+CREATE INDEX IF NOT EXISTS idx_roundtable_perspectives_rt ON roundtable_perspectives(roundtable_id);

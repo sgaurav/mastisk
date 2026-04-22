@@ -42,6 +42,21 @@ class NotesSettings(BaseSettings):
     notetaker_concurrency: int = 4
 
 
+class RoundtableSettings(BaseSettings):
+    """Config for the multi-LLM roundtable subsystem.
+    See docs/superpowers/specs/2026-04-22-multi-llm-roundtable-design.md §7."""
+    backends: list[str] = Field(default_factory=lambda: ["claude", "codex", "gemini", "ollama"])
+    timeout_seconds: int = 120
+    synthesis_model: str = "claude"
+    perspective_models: dict[str, str] = Field(default_factory=lambda: {
+        "claude": "claude-sonnet-4-6",
+        "codex": "gpt-5-codex",
+        "gemini": "gemini-2.5-pro",
+        "ollama": "llama3.1:8b",
+    })
+    context_max_chars: int = 4000
+
+
 class Settings(BaseSettings):
     # populate_by_name: accept both the field name (from TOML) AND the alias
     # (from env vars). Without this, pydantic v2 silently drops TOML kwargs
@@ -74,6 +89,8 @@ class Settings(BaseSettings):
     budget: AgentBudget = Field(default_factory=AgentBudget)
 
     notes: NotesSettings = Field(default_factory=NotesSettings)
+
+    roundtable: RoundtableSettings = Field(default_factory=RoundtableSettings)
 
     # RSS feeds to subscribe (managed via CLI, stored in DB — this is just the initial seed)
     seed_feeds: list[str] = Field(default_factory=list)
