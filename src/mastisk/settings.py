@@ -26,6 +26,22 @@ class AgentBudget(BaseSettings):
     synthesizer: int = 10
 
 
+class NotesSettings(BaseSettings):
+    """Config for the notes subsystem. See docs/superpowers/specs/2026-04-21-notes-subsystem-design.md §8."""
+    classify_stable_mtime_seconds: int = 30
+    auto_escalate_cap: int = 20
+    auto_escalate_min_confidence: float = 0.7
+    auto_escalate_min_length: int = 80
+    auto_escalate_classifications: list[str] = Field(default_factory=lambda: ["idea", "question"])
+    dedup_hours: int = 24
+    dedup_similarity_threshold: float = 0.85
+    claude_retry_count: int = 2
+    claude_retry_backoff_mins: list[int] = Field(default_factory=lambda: [30, 60])
+    notetaker_model: str = "llama3.1:8b"
+    escalator_model: str = "claude-sonnet-4-6"
+    notetaker_concurrency: int = 4
+
+
 class Settings(BaseSettings):
     # populate_by_name: accept both the field name (from TOML) AND the alias
     # (from env vars). Without this, pydantic v2 silently drops TOML kwargs
@@ -56,6 +72,8 @@ class Settings(BaseSettings):
 
     # Agent budgets (daily caps — enforced by Agent.run_once)
     budget: AgentBudget = Field(default_factory=AgentBudget)
+
+    notes: NotesSettings = Field(default_factory=NotesSettings)
 
     # RSS feeds to subscribe (managed via CLI, stored in DB — this is just the initial seed)
     seed_feeds: list[str] = Field(default_factory=list)

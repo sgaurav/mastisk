@@ -67,6 +67,18 @@ def self_dir() -> Path:
     return vault_dir() / "_self"
 
 
+def notes_dir() -> Path:
+    return vault_dir() / "_notes"
+
+
+def notes_inbox_dir() -> Path:
+    return notes_dir() / "inbox"
+
+
+def notes_daily_dir() -> Path:
+    return notes_dir() / "daily"
+
+
 def ensure_dirs() -> None:
     """Create all directories that should exist (idempotent)."""
     for d in [
@@ -80,5 +92,8 @@ def ensure_dirs() -> None:
         vault_dir() / "sources",
         vault_dir() / "synthesis",
         self_dir(),
+        notes_dir(),
+        notes_inbox_dir(),
+        notes_daily_dir(),
     ]:
         d.mkdir(parents=True, exist_ok=True)

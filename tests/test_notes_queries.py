@@ -52,3 +52,13 @@ def test_notes_column_defaults(db):
     assert row["classification"] is None
     assert row["classified_at"] is None
     assert row["deleted_at"] is None
+
+
+def test_notes_dir_helpers(vault_tmp):
+    from mastisk.paths import notes_dir, notes_inbox_dir, notes_daily_dir, ensure_dirs
+    ensure_dirs()
+    assert notes_dir().exists()
+    assert notes_inbox_dir().exists()
+    assert notes_daily_dir().exists()
+    assert notes_dir() == vault_tmp / "_notes"
+    assert notes_inbox_dir() == vault_tmp / "_notes" / "inbox"
