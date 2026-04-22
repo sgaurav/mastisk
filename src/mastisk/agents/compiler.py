@@ -56,6 +56,7 @@ Rules:
 - Never invent sources you didn't see. Never hallucinate URLs.
 - Write body text in HTML. Use <em> for emphasis, <span class="link" data-target="slug"> for cross-references.
 - Match the user's writing style from their profile.
+- "open" sections are ANALYTICAL threads the article leaves unresolved — genuine conceptual loose ends a reader would still be thinking about. NEVER use "open" to flag missing metadata ("what's the publish date?", "who is the author?", "what's his role?", "when was this written?"). If you lacked a fact, leave the field empty; do not convert metadata gaps into open questions. If the source has no genuine analytical loose ends, omit the "Open questions" section entirely.
 """
 
 
