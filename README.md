@@ -192,6 +192,9 @@ mastisk add-feed <url>      subscribe an RSS feed
 mastisk add-youtube <url>   queue a video for Listener
 mastisk note [text]         capture a note (opens $EDITOR if no text)
 mastisk roundtable [text]   fan a prompt out to all LLM backends + synthesize
+mastisk add-repo <slug>     track a GitHub repo (hourly poll + daily ideation)
+mastisk list-repos          list tracked repos
+mastisk remove-repo <slug>  tombstone a tracked repo
 mastisk logs                tail agent activity
 mastisk vault-path          show where the vault lives
 mastisk backup              tar the DB + config to ./mastisk-backup-*.tar.gz
@@ -226,6 +229,30 @@ Three ways:
 Configure which backends run, timeouts, and per-backend models in `~/Library/Application Support/Mastisk/config.toml` under `[roundtable]`. A missing CLI (e.g. `gemini` not installed) is skipped silently; results are stored with `error='backend not available'`.
 
 Saved roundtables live in the `Roundtables` sidebar entry. Each perspective is kept in full, so you can compare models side-by-side.
+
+---
+
+## GitHub repos
+
+Track GitHub repositories and mastisk will poll them hourly (commits + open issues + open PRs + README) and generate 4 fresh idea-notes per repo per day. The ideas flow through the normal Notes pipeline — they get classified, auto-escalated if they're interesting enough, and you can run the Roundtable on any of them.
+
+Add a repo:
+
+```bash
+mastisk add-repo anthropics/claude-code
+```
+
+Or in the PWA: sidebar → Repos → "+ add repo".
+
+Configure the poll cadence, ideation cadence, and GitHub PAT in `~/Library/Application Support/Mastisk/config.toml` under `[github]`. Without a PAT you're limited to 60 unauthenticated requests per hour; with one (classic, `public_repo` scope) you get 5000/hour.
+
+CLI commands:
+
+```bash
+mastisk add-repo owner/repo       # register
+mastisk list-repos                # see what's tracked
+mastisk remove-repo owner/repo    # tombstone (snapshots + notes are kept)
+```
 
 ---
 

@@ -10,7 +10,7 @@ interface Props {
   onNavigate: (view: View, id?: string) => void;
 }
 
-const SYS_VIEWS = new Set<View>(['digest', 'queue', 'feed', 'agents', 'graph', 'ingest', 'lint', 'settings', 'open_questions', 'notes', 'roundtables']);
+const SYS_VIEWS = new Set<View>(['digest', 'queue', 'feed', 'agents', 'graph', 'ingest', 'lint', 'settings', 'open_questions', 'notes', 'roundtables', 'repos']);
 
 export function Sidebar({ vault, pinned, user, currentView, currentArticle, onNavigate }: Props) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -56,6 +56,13 @@ export function Sidebar({ vault, pinned, user, currentView, currentArticle, onNa
       >
         <span className="glyph">◎</span>
         <span className="label">Roundtables</span>
+      </div>
+      <div
+        className={`side-row ${currentView === 'repos' || currentView === 'repo' ? 'active' : ''}`}
+        onClick={() => onNavigate('repos')}
+      >
+        <span className="glyph">⎇</span>
+        <span className="label">Repos</span>
       </div>
       {user && (
         <div className="user-pill" onClick={() => onNavigate('ingest')} role="button" title="Sources & ingest">

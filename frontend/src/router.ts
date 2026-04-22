@@ -6,6 +6,7 @@ export interface Route {
   articleId: string | null;
   noteId: number | null;
   roundtableId: number | null;
+  repoSlug: string | null;
   date: string | null;
 }
 
@@ -25,6 +26,7 @@ const VIEW_PATHS: Record<string, View> = {
   '/settings': 'settings',
   '/notes': 'notes',
   '/roundtables': 'roundtables',
+  '/repos': 'repos',
 };
 
 const PATH_FOR_VIEW: Record<View, string> = {
@@ -43,12 +45,14 @@ const PATH_FOR_VIEW: Record<View, string> = {
   note: '/notes/',
   roundtables: '/roundtables',
   roundtable: '/roundtables/',
+  repos: '/repos',
+  repo: '/repos/',
 };
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 function emptyRoute(view: View): Route {
-  return { view, articleId: null, noteId: null, roundtableId: null, date: null };
+  return { view, articleId: null, noteId: null, roundtableId: null, repoSlug: null, date: null };
 }
 
 export function parseRoute(pathname: string): Route {
@@ -80,6 +84,13 @@ export function parseRoute(pathname: string): Route {
     }
     return emptyRoute('roundtables');
   }
+  if (pathname.startsWith('/repos/')) {
+    const raw = pathname.slice('/repos/'.length);
+    if (raw && raw.includes('/')) {
+      return { ...emptyRoute('repo'), repoSlug: raw };
+    }
+    return emptyRoute('repos');
+  }
   const view = VIEW_PATHS[pathname];
   if (view) return emptyRoute(view);
   return emptyRoute('digest');
@@ -90,6 +101,7 @@ export function routeToPath(view: View, arg?: string | null): string {
   if (view === 'digest' && arg && ISO_DATE.test(arg)) return `/digest/${arg}`;
   if (view === 'note' && arg) return `/notes/${arg}`;
   if (view === 'roundtable' && arg) return `/roundtables/${arg}`;
+  if (view === 'repo' && arg) return `/repos/${arg}`;
   return PATH_FOR_VIEW[view] ?? '/';
 }
 
@@ -108,6 +120,7 @@ export function useRoute() {
     else if (view === 'digest' && arg && ISO_DATE.test(arg)) next.date = arg;
     else if (view === 'note' && arg) next.noteId = Number(arg);
     else if (view === 'roundtable' && arg) next.roundtableId = Number(arg);
+    else if (view === 'repo' && arg) next.repoSlug = arg;
     return next;
   };
 

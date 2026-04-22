@@ -253,7 +253,40 @@ export type View =
   | 'graph' | 'mobile' | 'queue' | 'ingest' | 'lint' | 'settings'
   | 'open_questions'
   | 'notes' | 'note'
-  | 'roundtables' | 'roundtable';
+  | 'roundtables' | 'roundtable'
+  | 'repos' | 'repo';
+
+export interface RepoSnapshot {
+  polled_at: string;
+  stars_count: number | null;
+  forks_count: number | null;
+  open_issues_count: number | null;
+  open_prs_count: number | null;
+  error: string | null;
+}
+
+export interface RepoSummary {
+  slug: string;
+  display_name: string | null;
+  description: string | null;
+  is_private: boolean;
+  last_polled_at: string | null;
+  last_ideated_at: string | null;
+  snapshot: RepoSnapshot | null;
+}
+
+export interface RepoDetail {
+  slug: string;
+  display_name: string | null;
+  description: string | null;
+  is_private: boolean;
+  default_branch: string | null;
+  added_at: string;
+  last_polled_at: string | null;
+  last_ideated_at: string | null;
+  context_md: string | null;
+  latest_snapshot: Record<string, unknown> | null;
+}
 
 export interface BudgetValues {
   scout: number;

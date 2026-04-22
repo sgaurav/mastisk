@@ -1,8 +1,8 @@
 import type {
   Article, ArticlePreview, Artifact, ArtifactKind, AskResponse, Digest, Feed,
   FeedTick, AgentInfo, GraphData, Job, Note, OpenQuestionsResponse, PendingSynthesisResponse,
-  PinnedItem, Roundtable, RoundtableSummary, SettingsBundle, SettingsPatch, SynthesisRunResponse,
-  UserInfo, VaultItem,
+  PinnedItem, RepoDetail, RepoSummary, Roundtable, RoundtableSummary, SettingsBundle, SettingsPatch,
+  SynthesisRunResponse, UserInfo, VaultItem,
 } from './types';
 
 const BASE = '/api';
@@ -241,6 +241,44 @@ export const api = {
       fetch(`/api/roundtables/${id}/save-as-note`, { method: 'POST' }).then(r => {
         if (!r.ok) throw new Error(`${r.status}`);
         return r.json();
+      }),
+  },
+
+  repos: {
+    add: (slug: string): Promise<{ slug: string; display_name: string; description: string | null }> =>
+      fetch('/api/repos', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug }),
+      }).then(async r => {
+        if (!r.ok) {
+          const msg = await r.text();
+          throw new Error(`${r.status}: ${msg.slice(0, 200)}`);
+        }
+        return r.json();
+      }),
+
+    list: (): Promise<RepoSummary[]> =>
+      fetch('/api/repos').then(r => r.json()),
+
+    get: (slug: string): Promise<RepoDetail> =>
+      fetch(`/api/repos/${slug}`).then(r => {
+        if (!r.ok) throw new Error(`${r.status}`);
+        return r.json();
+      }),
+
+    delete: (slug: string): Promise<void> =>
+      fetch(`/api/repos/${slug}`, { method: 'DELETE' }).then(r => {
+        if (!r.ok) throw new Error(`${r.status}`);
+      }),
+
+    pollNow: (slug: string): Promise<void> =>
+      fetch(`/api/repos/${slug}/poll-now`, { method: 'POST' }).then(r => {
+        if (!r.ok) throw new Error(`${r.status}`);
+      }),
+
+    ideateNow: (slug: string): Promise<void> =>
+      fetch(`/api/repos/${slug}/ideate-now`, { method: 'POST' }).then(r => {
+        if (!r.ok) throw new Error(`${r.status}`);
       }),
   },
 };

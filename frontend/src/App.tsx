@@ -26,6 +26,8 @@ import { NoteView } from './components/NoteView';
 import { NoteCaptureModal } from './components/NoteCaptureModal';
 import { RoundtablesListView } from './components/RoundtablesListView';
 import { RoundtableView } from './components/RoundtableView';
+import { ReposView } from './components/ReposView';
+import { RepoDetailView } from './components/RepoDetailView';
 
 export function App() {
   const [theme, setTheme] = useState<'light' | 'dark'>(
@@ -174,6 +176,8 @@ export function App() {
         {view === 'roundtable' && currentRoundtable !== null && (
           <RoundtableView roundtableId={currentRoundtable} onNavigate={navigate}/>
         )}
+        {view === 'repos' && <ReposView onNavigate={navigate}/>}
+        {view === 'repo' && route.repoSlug && <RepoDetailView slug={route.repoSlug} onNavigate={navigate}/>}
         {view === 'mobile' && (
           <div className="view">
             <div className="view-h">System</div>
