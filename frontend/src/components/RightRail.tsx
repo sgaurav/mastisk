@@ -1,5 +1,7 @@
-import type { Article, AgentInfo, FeedTick, View } from '../types';
+import { useEffect, useState } from 'react';
+import type { Article, AgentInfo, FeedTick, Note, View } from '../types';
 import { ArtifactPanel } from './ArtifactPanel';
+import { api } from '../api';
 
 interface Props {
   article: Article;
@@ -32,6 +34,8 @@ export function RightRail({ article, feed, agents, onNavigate }: Props) {
           </div>
         ))}
       </div>
+
+      <YourThoughts articleId={article.id} onNavigate={onNavigate}/>
 
       <ArtifactPanel article={article}/>
 
@@ -68,6 +72,58 @@ export function RightRail({ article, feed, agents, onNavigate }: Props) {
         ))}
       </div>
     </aside>
+  );
+}
+
+function YourThoughts({
+  articleId,
+  onNavigate,
+}: {
+  articleId: string;
+  onNavigate: (v: View, id?: string) => void;
+}) {
+  const [notes, setNotes] = useState<Note[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setNotes(null);
+    api.notes.forArticle(articleId)
+      .then((rows) => { if (!cancelled) setNotes(rows); })
+      .catch(() => { if (!cancelled) setNotes([]); });
+    return () => { cancelled = true; };
+  }, [articleId]);
+
+  return (
+    <div className="rail-section">
+      <div className="rail-h">
+        Your thoughts
+        <span className="count">{notes?.length ?? 0}</span>
+      </div>
+      {notes === null ? (
+        <div style={{ fontSize: 12, color: 'var(--fg-faint)', fontFamily: 'var(--mono)' }}>loading…</div>
+      ) : notes.length === 0 ? (
+        <div style={{ fontSize: 12, color: 'var(--fg-faint)', lineHeight: 1.5 }}>
+          No thoughts yet. Look at the Open Questions section and hit "+ add thoughts" to start.
+        </div>
+      ) : (
+        <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {notes.map((n) => (
+            <li key={n.id}>
+              <a
+                href={`/notes/${n.id}`}
+                style={{ fontSize: 12, color: 'var(--fg)', textDecoration: 'none', display: 'block' }}
+                onClick={(e) => { e.preventDefault(); onNavigate('note', String(n.id)); }}
+              >
+                <span style={{ color: 'var(--fg-faint)', fontFamily: 'var(--mono)', marginRight: 6 }}>
+                  {new Date(n.created_at).toLocaleDateString()}
+                </span>
+                {n.summary ?? n.slug}
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 

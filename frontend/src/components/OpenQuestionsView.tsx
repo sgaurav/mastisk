@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import type { OpenQuestion, View } from '../types';
+import { NoteCaptureModal, type CaptureContext } from './NoteCaptureModal';
 
 interface Props {
   onNavigate: (view: View, id?: string) => void;
@@ -9,6 +10,7 @@ interface Props {
 export function OpenQuestionsView({ onNavigate }: Props) {
   const [questions, setQuestions] = useState<OpenQuestion[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [captureCtx, setCaptureCtx] = useState<CaptureContext | null>(null);
 
   useEffect(() => {
     api.openQuestions()
@@ -103,7 +105,27 @@ export function OpenQuestionsView({ onNavigate }: Props) {
                     if (t.closest('a')) e.stopPropagation();
                   }}
                 >
-                  <h2 style={{fontSize:14,margin:'0 0 4px'}}>{q.heading}</h2>
+                  <div style={{display:'flex',alignItems:'center',gap:8,margin:'0 0 4px'}}>
+                    <h2 style={{fontSize:14,margin:0,flex:1}}>{q.heading}</h2>
+                    <button
+                      type="button"
+                      style={{
+                        fontSize: 11, padding: '2px 8px',
+                        border: '1px solid var(--border)', borderRadius: 4,
+                        background: 'var(--bg-soft, transparent)', cursor: 'pointer',
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCaptureCtx({
+                          article_id: q.article_id,
+                          section_heading: 'Open questions',
+                          question_html: q.body,
+                        });
+                      }}
+                    >
+                      + add thoughts
+                    </button>
+                  </div>
                   <p
                     style={{margin:0,fontFamily:'var(--serif)',lineHeight:1.55}}
                     dangerouslySetInnerHTML={{ __html: q.body }}
@@ -114,6 +136,13 @@ export function OpenQuestionsView({ onNavigate }: Props) {
           </article>
         ))}
       </div>
+
+      <NoteCaptureModal
+        open={captureCtx !== null}
+        onClose={() => setCaptureCtx(null)}
+        onCaptured={() => setCaptureCtx(null)}
+        context={captureCtx ?? undefined}
+      />
     </div>
   );
 }

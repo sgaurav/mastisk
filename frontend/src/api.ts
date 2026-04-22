@@ -184,11 +184,14 @@ export const api = {
     }),
 
   notes: {
-    create: (text: string): Promise<{ id: number; slug: string; path: string }> =>
+    create: (
+      text: string,
+      context?: { article_id: string; section_heading?: string; question_html?: string },
+    ): Promise<{ id: number; slug: string; path: string; linked_article_id: string | null }> =>
       fetch('/api/notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, source: 'pwa' }),
+        body: JSON.stringify({ text, source: 'pwa', ...(context ? { context } : {}) }),
       }).then(r => { if (!r.ok) throw new Error(`${r.status}`); return r.json(); }),
 
     list: (limit = 50): Promise<Note[]> =>
@@ -204,5 +207,8 @@ export const api = {
       fetch(`/api/notes/${id}`, { method: 'DELETE' }).then(r => {
         if (!r.ok) throw new Error(`${r.status}`);
       }),
+
+    forArticle: (articleId: string, limit = 50): Promise<Note[]> =>
+      fetch(`/api/articles/${encodeURIComponent(articleId)}/notes?limit=${limit}`).then(r => r.json()),
   },
 };

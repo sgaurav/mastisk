@@ -1,13 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 
+export interface CaptureContext {
+  article_id: string;
+  section_heading?: string;
+  question_html?: string;
+}
+
 interface Props {
   open: boolean;
   onClose: () => void;
   onCaptured?: (noteId: number) => void;
+  context?: CaptureContext;
 }
 
-export function NoteCaptureModal({ open, onClose, onCaptured }: Props) {
+function stripHtml(html: string): string {
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  return div.textContent?.trim() ?? '';
+}
+
+export function NoteCaptureModal({ open, onClose, onCaptured, context }: Props) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,7 +40,7 @@ export function NoteCaptureModal({ open, onClose, onCaptured }: Props) {
     setBusy(true);
     setError(null);
     try {
-      const res = await api.notes.create(trimmed);
+      const res = await api.notes.create(trimmed, context);
       onCaptured?.(res.id);
       onClose();
     } catch (e) {
@@ -35,7 +48,7 @@ export function NoteCaptureModal({ open, onClose, onCaptured }: Props) {
     } finally {
       setBusy(false);
     }
-  }, [text, onCaptured, onClose]);
+  }, [text, onCaptured, onClose, context]);
 
   const onKeyDown = useCallback((e: React.KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
@@ -47,6 +60,8 @@ export function NoteCaptureModal({ open, onClose, onCaptured }: Props) {
   }, [submit, onClose]);
 
   if (!open) return null;
+
+  const questionPreview = context?.question_html ? stripHtml(context.question_html) : '';
 
   return (
     <div
@@ -67,6 +82,19 @@ export function NoteCaptureModal({ open, onClose, onCaptured }: Props) {
         }}
         onClick={(e) => e.stopPropagation()}
       >
+        {context && (
+          <div
+            style={{
+              fontSize: 12, color: 'var(--fg-faint)', marginBottom: 10,
+              paddingBottom: 8, borderBottom: '1px solid var(--border)',
+            }}
+          >
+            in reply to {context.section_heading ? `"${context.section_heading}"` : 'article'}:
+            <div style={{ fontStyle: 'italic', marginTop: 4 }}>
+              {questionPreview ? questionPreview : <em>(article context)</em>}
+            </div>
+          </div>
+        )}
         <div style={{ fontSize: 12, color: 'var(--fg-faint)', marginBottom: 8, fontFamily: 'var(--mono)' }}>
           capture note — ⌘↵ to save, esc to cancel
         </div>
@@ -76,7 +104,7 @@ export function NoteCaptureModal({ open, onClose, onCaptured }: Props) {
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
           disabled={busy}
-          placeholder="what are you thinking?"
+          placeholder={context ? 'your thought on this question' : 'what are you thinking?'}
           rows={8}
           style={{
             width: '100%', boxSizing: 'border-box',
