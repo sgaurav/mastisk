@@ -10,11 +10,12 @@ interface Props {
   onNavigate: (view: View, id?: string) => void;
   onAddRepo: () => void;
   onCaptureNote: () => void;
+  onCreateBlog: () => void;
 }
 
-const SYS_VIEWS = new Set<View>(['digest', 'queue', 'feed', 'agents', 'graph', 'ingest', 'lint', 'settings', 'open_questions', 'notes', 'roundtables', 'repos']);
+const SYS_VIEWS = new Set<View>(['digest', 'queue', 'feed', 'agents', 'graph', 'ingest', 'lint', 'settings', 'open_questions', 'notes', 'roundtables', 'repos', 'blog']);
 
-export function Sidebar({ vault, pinned, user, currentView, currentArticle, onNavigate, onAddRepo, onCaptureNote }: Props) {
+export function Sidebar({ vault, pinned, user, currentView, currentArticle, onNavigate, onAddRepo, onCaptureNote, onCreateBlog }: Props) {
   // Folders are collapsed by default. A label appearing in `opened` with value
   // true means the user has expanded it. Kept in-memory per session — no
   // persistence, since recall of "which sections were open last week" isn't a
@@ -97,6 +98,27 @@ export function Sidebar({ vault, pinned, user, currentView, currentArticle, onNa
           onClick={(e) => { e.stopPropagation(); onAddRepo(); }}
           title="Add a repo"
           aria-label="Add a repo"
+          style={{
+            background: 'transparent', border: 'none', color: 'var(--fg-faint)',
+            fontSize: 14, cursor: 'pointer', padding: '2px 6px',
+          }}
+        >
+          +
+        </button>
+      </div>
+      <div className="side-row-group" style={{ display: 'flex', alignItems: 'center' }}>
+        <div
+          className={`side-row ${currentView === 'blog' || currentView === 'blog_post' ? 'active' : ''}`}
+          onClick={() => onNavigate('blog')}
+          style={{ flex: 1 }}
+        >
+          <span className="glyph">✒</span>
+          <span className="label">Blog Posts</span>
+        </div>
+        <button
+          onClick={(e) => { e.stopPropagation(); onCreateBlog(); }}
+          title="Draft a blog post"
+          aria-label="Draft a blog post"
           style={{
             background: 'transparent', border: 'none', color: 'var(--fg-faint)',
             fontSize: 14, cursor: 'pointer', padding: '2px 6px',

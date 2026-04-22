@@ -1,11 +1,32 @@
 import type {
-  Article, ArticlePreview, Artifact, ArtifactKind, AskResponse, Digest, Feed,
+  Article, ArticlePreview, Artifact, ArtifactKind, AskResponse, BlogPostDetail,
+  BlogPostSummary, Digest, Feed,
   FeedTick, AgentInfo, GraphData, Job, Note, OpenQuestionsResponse, PendingSynthesisResponse,
   PinnedItem, RepoDetail, RepoSummary, Roundtable, RoundtableSummary, SettingsBundle, SettingsPatch,
   SynthesisRunResponse, UserInfo, VaultItem,
 } from './types';
 
 const BASE = '/api';
+
+export class ApiError extends Error {
+  status: number;
+  detail: string;
+  constructor(message: string, status: number, detail: string = message) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
+async function throwApiError(r: Response): Promise<never> {
+  let detail = `${r.status} ${r.statusText}`.trim();
+  try {
+    const body = await r.json() as { detail?: string };
+    if (body && typeof body.detail === 'string' && body.detail) detail = body.detail;
+  } catch { /* fall back to status */ }
+  throw new ApiError(detail, r.status, detail);
+}
 
 async function j<T>(url: string, init?: RequestInit): Promise<T> {
   const r = await fetch(url, init);
@@ -241,6 +262,58 @@ export const api = {
       fetch(`/api/roundtables/${id}/save-as-note`, { method: 'POST' }).then(r => {
         if (!r.ok) throw new Error(`${r.status}`);
         return r.json();
+      }),
+  },
+
+  blog: {
+    create: (body: { theme?: string; window_days: number }, signal?: AbortSignal):
+      Promise<{ id: number; status: string }> =>
+      fetch('/api/blog-posts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          theme: body.theme ?? '',
+          window_days: body.window_days,
+        }),
+        signal,
+      }).then(async r => {
+        if (!r.ok) await throwApiError(r);
+        return r.json();
+      }),
+
+    list: (opts: { limit?: number; before?: number } = {}): Promise<BlogPostSummary[]> => {
+      const params = new URLSearchParams();
+      if (opts.limit) params.set('limit', String(opts.limit));
+      if (opts.before !== undefined) params.set('before', String(opts.before));
+      const qs = params.toString();
+      const url = qs ? `/api/blog-posts?${qs}` : '/api/blog-posts';
+      return fetch(url).then(async r => {
+        if (!r.ok) await throwApiError(r);
+        return r.json();
+      });
+    },
+
+    get: (id: number): Promise<BlogPostDetail> =>
+      fetch(`/api/blog-posts/${id}`).then(async r => {
+        if (!r.ok) await throwApiError(r);
+        return r.json();
+      }),
+
+    regenerate: (id: number): Promise<{ id: number; status: string }> =>
+      fetch(`/api/blog-posts/${id}/regenerate`, { method: 'POST' }).then(async r => {
+        if (!r.ok) await throwApiError(r);
+        return r.json();
+      }),
+
+    saveAsNote: (id: number): Promise<{ note_id: number; slug: string; reused: boolean }> =>
+      fetch(`/api/blog-posts/${id}/save-as-note`, { method: 'POST' }).then(async r => {
+        if (!r.ok) await throwApiError(r);
+        return r.json();
+      }),
+
+    delete: (id: number): Promise<void> =>
+      fetch(`/api/blog-posts/${id}`, { method: 'DELETE' }).then(async r => {
+        if (!r.ok) await throwApiError(r);
       }),
   },
 

@@ -13,10 +13,10 @@ from fastapi.staticfiles import StaticFiles
 
 from mastisk.paths import pwa_dir
 from mastisk.routes import (
-    articles, artifacts_route, ask, digest_route, feed_route, graph_route,
-    listen_route, notes, open_questions_route, repos_route, roundtable_route,
-    search, settings_route, signals_route, sources_route, stats_route,
-    synthesis_route, vault_route,
+    articles, artifacts_route, ask, blog_route, digest_route, feed_route,
+    graph_route, listen_route, notes, open_questions_route, repos_route,
+    roundtable_route, search, settings_route, signals_route, sources_route,
+    stats_route, synthesis_route, vault_route,
 )
 
 log = logging.getLogger("mastisk.app")
@@ -74,6 +74,7 @@ def create_app() -> FastAPI:
     app.include_router(notes.articles_notes_router)
     app.include_router(repos_route.router)
     app.include_router(roundtable_route.router)
+    app.include_router(blog_route.router)
 
     @app.get("/api/health")
     def health():

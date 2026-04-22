@@ -16,6 +16,7 @@ async def start_scheduler():
     # mid-compile, those rows never transition to done/failed and _pick_job
     # ignores them (only picks `queued`), so they'd be stuck forever.
     _reclaim_orphaned_running()
+    _reclaim_running_blog_posts()
 
     # One-shot graph repair on boot: reconnects links the Compiler dropped
     # because sibling articles didn't exist yet. This closes the gap between
@@ -195,6 +196,23 @@ async def start_scheduler():
     except Exception as e:
         log.warning("scheduler: github_ideator registration failed: %s", e)
 
+    try:
+        from mastisk.agents.blog_writer import BlogWriter
+        # BlogWriter is purely job-driven (POST /api/blog-posts enqueues a
+        # draft job). 10s tick matches Roundtable — user is blocking on this
+        # through the modal. First run 5s after boot so any pending drafts
+        # from before a restart drain promptly.
+        sched.add_job(
+            BlogWriter().run_once, "interval",
+            seconds=BlogWriter.tick_seconds, id="blog_writer",
+            max_instances=1,
+            next_run_time=datetime.now(timezone.utc) + timedelta(seconds=5),
+            coalesce=True,
+        )
+        log.info("scheduler: blog_writer registered (10s tick)")
+    except Exception as e:
+        log.warning("scheduler: blog_writer registration failed: %s", e)
+
     sched.start()
     log.info("scheduler started")
     return sched
@@ -212,6 +230,25 @@ def _reclaim_orphaned_running() -> None:
         )
         if cur.rowcount:
             log.info("reclaimed %s orphaned running job(s)", cur.rowcount)
+
+
+def _reclaim_running_blog_posts() -> None:
+    """Flip stale blog_posts.status='running' rows to 'failed' at boot.
+
+    Companion sweep to _reclaim_orphaned_running. Jobs table rescue puts the
+    job back to queued, but BlogWriter's double-process guard refuses rows
+    stuck in 'running' → they'd never be reprocessed. Marking them failed
+    lets the user regenerate. See spec §13 'Boot-time reclaim'.
+    """
+    from mastisk.db import queries as q
+    from mastisk.db.queries import connect
+    try:
+        with connect() as conn:
+            n = q.reclaim_running_blog_posts(conn, stale_minutes=60)
+        if n:
+            log.info("reclaimed %s stale running blog_posts row(s)", n)
+    except Exception as e:
+        log.warning("blog_posts reclaim skipped: %s", e)
 
 
 def _graph_repair_once() -> None:

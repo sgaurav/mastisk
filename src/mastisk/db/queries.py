@@ -1281,3 +1281,222 @@ def mark_repo_ideated(conn: sqlite3.Connection, *, slug: str, ideated_at: str) -
         "UPDATE repos SET last_ideated_at = ? WHERE slug = ?",
         (ideated_at, slug),
     )
+
+
+# ─────────────────────────────── Blog posts ───────────────────────────────
+# See docs/superpowers/specs/2026-04-22-blog-writer-design.md §§10-11.
+
+
+def create_blog_post(
+    conn: sqlite3.Connection,
+    *,
+    theme: str,
+    window_days: int,
+) -> int:
+    """Insert a blog_posts row in status='pending' and return its id.
+
+    slug, path, title, model and word_count are all null at creation — they're
+    populated only when the BlogWriter agent finishes a successful draft. The
+    spec's storage model treats the vault file as the source of truth for
+    body_md; this row is the index.
+    """
+    cur = conn.execute(
+        """INSERT INTO blog_posts (theme, window_days, status)
+           VALUES (?, ?, 'pending')""",
+        (theme, window_days),
+    )
+    return cur.lastrowid or 0
+
+
+def get_blog_post(conn: sqlite3.Connection, bp_id: int) -> dict | None:
+    row = conn.execute(
+        "SELECT * FROM blog_posts WHERE id = ?", (bp_id,)
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def list_blog_posts(
+    conn: sqlite3.Connection,
+    *,
+    limit: int = 50,
+    before_id: int | None = None,
+) -> list[dict]:
+    """List blog posts newest first, excluding tombstoned rows.
+
+    before_id enables keyset pagination for long lists (same shape as
+    list_roundtables).
+    """
+    qry = "SELECT * FROM blog_posts WHERE deleted_at IS NULL"
+    params: list[Any] = []
+    if before_id is not None:
+        qry += " AND id < ?"
+        params.append(before_id)
+    qry += " ORDER BY created_at DESC, id DESC LIMIT ?"
+    params.append(limit)
+    return [dict(r) for r in conn.execute(qry, params).fetchall()]
+
+
+def update_blog_post_status(
+    conn: sqlite3.Connection,
+    *,
+    bp_id: int,
+    status: str,
+    error: str | None = None,
+    finished: bool = False,
+) -> None:
+    """Patch a blog post's status (and optionally error).
+
+    ``finished=True`` stamps finished_at. Used for running→failed and the
+    (rare) mid-flight failed transition. Success transitions go through
+    update_blog_post_done so we can write slug/path/title atomically.
+    """
+    if finished:
+        conn.execute(
+            """UPDATE blog_posts
+               SET status = ?, error = ?, finished_at = CURRENT_TIMESTAMP
+               WHERE id = ?""",
+            (status, error, bp_id),
+        )
+    else:
+        conn.execute(
+            "UPDATE blog_posts SET status = ?, error = ? WHERE id = ?",
+            (status, error, bp_id),
+        )
+
+
+def update_blog_post_done(
+    conn: sqlite3.Connection,
+    *,
+    bp_id: int,
+    slug: str,
+    path: str,
+    title: str,
+    tags_json: str,
+    model: str,
+    word_count: int,
+    body_preview: str,
+) -> int:
+    """Flip a blog post to status='done' and write all the draft-derived fields.
+
+    Called once per successful agent run. slug/path/title become non-null here
+    (they were null during pending/running).
+
+    Returns the number of rows affected. The ``WHERE deleted_at IS NULL`` clause
+    closes a DELETE-mid-write race: if the user hit DELETE between the post-
+    write re-check and this UPDATE, 0 rows are affected and the caller MUST
+    unlink the draft file it just wrote.
+    """
+    cur = conn.execute(
+        """UPDATE blog_posts
+           SET status = 'done', slug = ?, path = ?, title = ?, tags_json = ?,
+               model = ?, word_count = ?, body_preview = ?,
+               error = NULL, finished_at = CURRENT_TIMESTAMP
+           WHERE id = ? AND deleted_at IS NULL""",
+        (slug, path, title, tags_json, model, word_count, body_preview, bp_id),
+    )
+    return cur.rowcount or 0
+
+
+def soft_delete_blog_post(conn: sqlite3.Connection, bp_id: int) -> None:
+    """Soft-delete the blog post by setting deleted_at.
+
+    Sources remain (spec §7 — soft-delete is orthogonal to status and does not
+    cascade). The vault file unlink is handled by the route layer — this only
+    touches DB.
+    """
+    conn.execute(
+        """UPDATE blog_posts SET deleted_at = CURRENT_TIMESTAMP
+           WHERE id = ? AND deleted_at IS NULL""",
+        (bp_id,),
+    )
+
+
+def reset_blog_post_for_regenerate(conn: sqlite3.Connection, bp_id: int) -> None:
+    """Reset a blog_posts row to pending for a regenerate run.
+
+    CASCADE clears blog_post_sources when the caller deletes via the
+    ``delete_blog_post_sources`` helper (which hits the same rows).
+
+    We INTENTIONALLY keep ``path`` and ``slug`` on the row. The BlogWriter
+    agent reads them at ``_handle`` start to unlink the prior draft file
+    before writing a fresh one — otherwise the previous file would orphan
+    and ``_unique_draft_path`` would slide to a ``-2.md`` variant. The
+    successful agent run later overwrites slug/path via ``update_blog_post_done``.
+    title/tags/model/word_count/body_preview ARE cleared — callers use them
+    to detect "row has been redrafted".
+    """
+    conn.execute(
+        """UPDATE blog_posts
+           SET status = 'pending', error = NULL, finished_at = NULL,
+               title = NULL, tags_json = '[]',
+               model = NULL, word_count = NULL, body_preview = NULL
+           WHERE id = ?""",
+        (bp_id,),
+    )
+
+
+def insert_blog_post_source(
+    conn: sqlite3.Connection,
+    *,
+    blog_post_id: int,
+    kind: str,
+    ref: str,
+    rank: int,
+    used: bool,
+    origin: str | None = None,
+) -> int:
+    """Record one source considered for a blog draft. See spec §10."""
+    cur = conn.execute(
+        """INSERT INTO blog_post_sources (blog_post_id, kind, ref, rank, used, origin)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (blog_post_id, kind, ref, rank, 1 if used else 0, origin),
+    )
+    return cur.lastrowid or 0
+
+
+def list_blog_post_sources(
+    conn: sqlite3.Connection, blog_post_id: int
+) -> list[dict]:
+    """All sources for a blog post, ordered by rank (1-indexed)."""
+    return [
+        dict(r)
+        for r in conn.execute(
+            """SELECT * FROM blog_post_sources
+               WHERE blog_post_id = ? ORDER BY rank ASC""",
+            (blog_post_id,),
+        ).fetchall()
+    ]
+
+
+def delete_blog_post_sources(
+    conn: sqlite3.Connection, blog_post_id: int
+) -> int:
+    """Remove all blog_post_sources rows for a post. Used before regenerate."""
+    cur = conn.execute(
+        "DELETE FROM blog_post_sources WHERE blog_post_id = ?",
+        (blog_post_id,),
+    )
+    return cur.rowcount or 0
+
+
+def reclaim_running_blog_posts(
+    conn: sqlite3.Connection, *, stale_minutes: int = 60
+) -> int:
+    """Flip orphaned running blog_posts rows to failed on daemon boot.
+
+    Mirrors scheduler's _reclaim_orphaned_running for the jobs queue. A blog
+    post stuck in 'running' past stale_minutes almost certainly lost its
+    daemon to a crash / restart — the agent's _handle wouldn't get another
+    chance because the jobs row may have been reclaimed to 'queued' but our
+    own in-loop status guard would skip 'running' on second pickup anyway.
+
+    Returns the number of rows reclaimed.
+    """
+    cur = conn.execute(
+        f"""UPDATE blog_posts
+            SET status = 'failed', error = 'daemon restart during draft',
+                finished_at = CURRENT_TIMESTAMP
+            WHERE status = 'running'
+              AND created_at < datetime('now', '-{int(stale_minutes)} minutes')""",
+    )
+    return cur.rowcount or 0

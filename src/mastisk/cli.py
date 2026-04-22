@@ -591,6 +591,88 @@ def note(
 
 
 @app.command()
+def blog(
+    theme: str | None = typer.Argument(
+        None,
+        help="Optional theme for the draft. Omit to let the writer pick a thread.",
+    ),
+    window_days: int = typer.Option(
+        14, "--window", "-w", help="Source window in days (7/14/30/90).",
+    ),
+) -> None:
+    """Draft a blog post from recent synthesis. Writes vault/blog/drafts/<slug>.md.
+
+    Matches the note/roundtable CLI pattern — writes the DB row and enqueues a
+    job directly, no HTTP. The daemon picks up the job on its next scheduler
+    tick; this command succeeds even if no daemon is running.
+
+    Examples:
+        mastisk blog "test-time compute"
+        mastisk blog --window 30
+        mastisk blog
+    """
+    from mastisk.agents.base import enqueue
+    from mastisk.agents.blog_writer import candidate_count
+    from mastisk.db import queries as q
+    from mastisk.db.queries import connect
+    from mastisk.settings import get_settings
+
+    _ensure_db()
+
+    settings = get_settings().blog
+    if window_days not in settings.allowed_window_days:
+        typer.secho(
+            f"--window must be one of {settings.allowed_window_days}",
+            fg="red",
+        )
+        raise typer.Exit(code=2)
+
+    # Empty-pool pre-check — mirrors the HTTP POST endpoint so a CLI-created
+    # job doesn't get enqueued only to fail inside the agent loop.
+    if candidate_count(window_days) == 0:
+        typer.secho(
+            f"no sources in the last {window_days} days — "
+            "add some notes/articles first, or try --window 30/90",
+            fg="red",
+        )
+        raise typer.Exit(code=1)
+
+    theme_text = (theme or "").strip()
+    with connect() as conn:
+        bp_id = q.create_blog_post(
+            conn, theme=theme_text, window_days=window_days,
+        )
+    enqueue("blog_writer", "draft", {"blog_post_id": bp_id})
+    typer.secho(
+        f"created blog post #{bp_id} — daemon will draft it; "
+        f"poll via PWA or `mastisk status`",
+        fg="green",
+    )
+
+
+@app.command(name="list-blogs")
+def list_blogs() -> None:
+    """List recent blog drafts with status and word count.
+
+    Reads ``blog_posts`` directly via queries; does not hit the HTTP API.
+    """
+    from mastisk.db import queries as q
+    from mastisk.db.queries import connect
+
+    _ensure_db()
+    with connect() as conn:
+        rows = q.list_blog_posts(conn, limit=20)
+    if not rows:
+        typer.echo("(no drafts yet; use `mastisk blog \"<theme>\"`)")
+        return
+    for r in rows:
+        title = r.get("title") or "(drafting…)"
+        wc = r.get("word_count")
+        wc_str = f" · {wc} words" if wc else ""
+        typer.echo(f"  #{r['id']} [{r['status']}] {title[:60]}{wc_str}")
+
+
+@app.command()
 def roundtable(
     text: str | None = typer.Argument(None, help="The prompt to run through all backends. If omitted, $EDITOR opens."),
     note: int | None = typer.Option(None, help="Attach the roundtable to an existing note_id as context."),

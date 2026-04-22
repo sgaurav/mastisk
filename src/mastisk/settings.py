@@ -72,6 +72,28 @@ class GithubSettings(BaseSettings):
     ideate_model: str = "claude-sonnet-4-6"
 
 
+class BlogSettings(BaseSettings):
+    """Config for the blog-writer subsystem.
+    See docs/superpowers/specs/2026-04-22-blog-writer-design.md §12.
+
+    No ``blog_model`` key: ``claude_bridge.run_claude()`` doesn't take a
+    model arg — it uses whatever the user's ``claude -p`` default is. The
+    Ollama fallback (and the theme-rerank pass) both use ``ollama_model``.
+    """
+    default_window_days: int = 14
+    allowed_window_days: list[int] = Field(default_factory=lambda: [7, 14, 30, 90])
+    max_sources: int = 40
+    pre_rank_limit: int = 80
+    per_source_char_limit: int = 1500
+    min_per_source_chars: int = 300
+    total_prompt_char_limit: int = 60000
+    ollama_prompt_char_limit: int = 20000
+    draft_word_count_min: int = 800
+    draft_word_count_max: int = 2000
+    claude_timeout_seconds: int = 240
+    ollama_model: str = "llama3.1:8b"
+
+
 class Settings(BaseSettings):
     # populate_by_name: accept both the field name (from TOML) AND the alias
     # (from env vars). Without this, pydantic v2 silently drops TOML kwargs
@@ -108,6 +130,8 @@ class Settings(BaseSettings):
     roundtable: RoundtableSettings = Field(default_factory=RoundtableSettings)
 
     github: GithubSettings = Field(default_factory=GithubSettings)
+
+    blog: BlogSettings = Field(default_factory=BlogSettings)
 
     # RSS feeds to subscribe (managed via CLI, stored in DB — this is just the initial seed)
     seed_feeds: list[str] = Field(default_factory=list)

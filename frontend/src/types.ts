@@ -254,7 +254,47 @@ export type View =
   | 'open_questions'
   | 'notes' | 'note'
   | 'roundtables' | 'roundtable'
-  | 'repos' | 'repo';
+  | 'repos' | 'repo'
+  | 'blog' | 'blog_post';
+
+export type BlogSourceKind = 'note' | 'article' | 'roundtable';
+
+export interface BlogPostSource {
+  n: number;
+  kind: BlogSourceKind;
+  ref: string;
+  used: boolean;
+  origin: string | null;
+  resolved: {
+    title?: string;
+    summary?: string;
+    slug?: string;
+    deleted: boolean;
+  };
+}
+
+export interface BlogPostSummary {
+  id: number;
+  slug: string | null;
+  path: string | null;
+  title: string | null;
+  theme: string;
+  window_days: number;
+  status: 'pending' | 'running' | 'done' | 'failed';
+  model: string | null;
+  tags: string[];
+  word_count: number | null;
+  body_preview: string | null;
+  created_at: string;
+  finished_at: string | null;
+  saved_as_note_id: number | null;
+}
+
+export interface BlogPostDetail extends BlogPostSummary {
+  body_md: string | null;
+  error: string | null;
+  sources: BlogPostSource[];
+}
 
 export interface RepoSnapshot {
   polled_at: string;

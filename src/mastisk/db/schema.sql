@@ -369,3 +369,48 @@ CREATE TABLE IF NOT EXISTS repo_idea_runs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_repo_idea_runs_repo ON repo_idea_runs(repo_slug, ideated_at DESC);
+
+-- ─────────────────────────────── Blog posts ───────────────────────────────
+-- User-triggered long-form drafts assembled from recent synthesis.
+-- File in vault/blog/drafts/ is the source of truth for body_md; this row is
+-- a derived index. See docs/superpowers/specs/2026-04-22-blog-writer-design.md
+
+CREATE TABLE IF NOT EXISTS blog_posts (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  slug            TEXT UNIQUE,                   -- filename without .md; null until done (path is also null pre-done)
+  path            TEXT UNIQUE,                   -- relative to vault root; null until done
+  title           TEXT,                          -- null until status='done'
+  theme           TEXT NOT NULL DEFAULT '',      -- '' when no theme was given
+  window_days     INTEGER NOT NULL,              -- 7 | 14 | 30 | 90
+  status          TEXT NOT NULL DEFAULT 'pending',  -- pending | running | done | failed
+  model           TEXT,                          -- 'claude' | 'ollama' — populated at done
+  tags_json       TEXT DEFAULT '[]',             -- JSON array of tags from Claude's output
+  word_count      INTEGER,                       -- populated at done (len(body_md.split()))
+  body_preview    TEXT,                          -- first 400 chars of the draft, for list views
+  error           TEXT,                          -- populated iff status='failed'
+  created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+  finished_at     DATETIME,
+  saved_as_note_id INTEGER REFERENCES notes(id) ON DELETE SET NULL,
+  deleted_at      DATETIME                       -- tombstone; file also unlinked
+);
+
+CREATE INDEX IF NOT EXISTS idx_blog_posts_created ON blog_posts(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_blog_posts_status  ON blog_posts(status)
+  WHERE status IN ('pending', 'running');
+CREATE INDEX IF NOT EXISTS idx_blog_posts_not_deleted ON blog_posts(id) WHERE deleted_at IS NULL;
+
+-- Citation ledger: one row per (blog_post, source item) considered by the agent.
+-- used=1 means cited in the draft; used=0 means offered but Claude didn't pick it.
+-- Keeping used=0 rows lets us debug ranking + train better selection later.
+CREATE TABLE IF NOT EXISTS blog_post_sources (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  blog_post_id  INTEGER NOT NULL REFERENCES blog_posts(id) ON DELETE CASCADE,
+  kind          TEXT NOT NULL,                   -- 'note' | 'article' | 'roundtable'
+  ref           TEXT NOT NULL,                   -- stringified (note_id | article_id | roundtable_id)
+  rank          INTEGER NOT NULL,                -- N in `[source N]` — 1-indexed, matches the Sources block
+  used          INTEGER NOT NULL DEFAULT 0,      -- 1 if cited in body, 0 if offered-but-unused
+  origin        TEXT                             -- 'repo_ideator' if the note came from GithubIdeator; else null
+);
+
+CREATE INDEX IF NOT EXISTS idx_blog_post_sources_post ON blog_post_sources(blog_post_id);
+CREATE INDEX IF NOT EXISTS idx_blog_post_sources_ref ON blog_post_sources(kind, ref);

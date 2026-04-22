@@ -13,6 +13,8 @@ const CRUMB: Record<string, readonly string[]> = {
   ingest:  ['System', 'Sources & ingest'],
   lint:    ['System', 'Health check'],
   settings:['System', 'Settings'],
+  blog:       ['Wiki', 'Blog Posts'],
+  blog_post:  ['Wiki', 'Blog Posts', 'Draft'],
 };
 
 interface Props {

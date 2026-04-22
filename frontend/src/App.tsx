@@ -29,6 +29,9 @@ import { RoundtableView } from './components/RoundtableView';
 import { ReposView } from './components/ReposView';
 import { RepoDetailView } from './components/RepoDetailView';
 import { AddRepoModal } from './components/AddRepoModal';
+import { BlogListView } from './components/BlogListView';
+import { BlogView } from './components/BlogView';
+import { BlogCreationModal } from './components/BlogCreationModal';
 
 export function App() {
   const [theme, setTheme] = useState<'light' | 'dark'>(
@@ -38,12 +41,14 @@ export function App() {
   const { route, navigate: routeNavigate, replace } = useRoute();
   const { view, articleId: currentArticle, noteId: currentNote, date: currentDate } = route;
   const currentRoundtable = route.roundtableId;
+  const currentBlogPost = route.blogPostId;
 
   const [sideOpen, setSideOpen] = useState(window.innerWidth > 900);
   const [railOpen, setRailOpen] = useState(window.innerWidth > 900);
   const [askOpen, setAskOpen] = useState(false);
   const [captureOpen, setCaptureOpen] = useState(false);
   const [addRepoOpen, setAddRepoOpen] = useState(false);
+  const [captureBlogOpen, setCaptureBlogOpen] = useState(false);
   // Bumped after a successful add-repo, so ReposView re-fetches its list when
   // we're already on /repos (navigating there is a no-op in that case).
   const [reposReloadKey, setReposReloadKey] = useState(0);
@@ -162,6 +167,7 @@ export function App() {
           onNavigate={navigate}
           onAddRepo={() => setAddRepoOpen(true)}
           onCaptureNote={() => setCaptureOpen(true)}
+          onCreateBlog={() => setCaptureBlogOpen(true)}
         />
       )}
 
@@ -196,6 +202,15 @@ export function App() {
           />
         )}
         {view === 'repo' && route.repoSlug && <RepoDetailView slug={route.repoSlug} onNavigate={navigate}/>}
+        {view === 'blog' && (
+          <BlogListView
+            onCreateBlog={() => setCaptureBlogOpen(true)}
+            onNavigate={navigate}
+          />
+        )}
+        {view === 'blog_post' && currentBlogPost !== null && (
+          <BlogView blogPostId={currentBlogPost} onNavigate={navigate}/>
+        )}
         {view === 'mobile' && (
           <div className="view">
             <div className="view-h">System</div>
@@ -238,6 +253,14 @@ export function App() {
           navigate('repo', slug);
         }}
         onNavigate={navigate}
+      />
+      <BlogCreationModal
+        open={captureBlogOpen}
+        onClose={() => setCaptureBlogOpen(false)}
+        onCreated={(id) => {
+          setCaptureBlogOpen(false);
+          navigate('blog_post', String(id));
+        }}
       />
       {toast && (
         <div
