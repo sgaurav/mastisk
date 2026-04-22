@@ -124,3 +124,14 @@ async def poll_now_endpoint(owner: str, name: str) -> dict:
         raise HTTPException(status_code=404, detail="repo not found")
     enqueue("github_poller", "poll", {"repo_slug": slug})
     return {"ok": True}
+
+
+@router.post("/{owner}/{name}/ideate-now", status_code=202)
+async def ideate_now_endpoint(owner: str, name: str) -> dict:
+    slug = f"{owner.lower()}/{name.lower()}"
+    with connect() as conn:
+        r = q.get_repo(conn, slug)
+    if r is None or r.get("deleted_at") is not None:
+        raise HTTPException(status_code=404, detail="repo not found")
+    enqueue("github_ideator", "ideate", {"repo_slug": slug})
+    return {"ok": True}

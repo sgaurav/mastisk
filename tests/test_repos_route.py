@@ -90,3 +90,16 @@ def test_poll_now_enqueues(client, db):
     assert r.status_code == 202
     jrow = db.execute("SELECT 1 FROM jobs WHERE agent='github_poller'").fetchone()
     assert jrow is not None
+
+
+def test_ideate_now_enqueues(client, db):
+    db.execute("INSERT INTO repos (slug, owner, name) VALUES ('a/b', 'a', 'b')")
+    r = client.post("/api/repos/a/b/ideate-now")
+    assert r.status_code == 202
+    jrow = db.execute("SELECT 1 FROM jobs WHERE agent='github_ideator'").fetchone()
+    assert jrow is not None
+
+
+def test_ideate_now_404_on_unknown(client):
+    r = client.post("/api/repos/gone/gone/ideate-now")
+    assert r.status_code == 404

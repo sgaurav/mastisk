@@ -1254,3 +1254,28 @@ def update_repo_context(
 
 def mark_repo_polled(conn: sqlite3.Connection, *, slug: str, polled_at: str) -> None:
     conn.execute("UPDATE repos SET last_polled_at = ? WHERE slug = ?", (polled_at, slug))
+
+
+def insert_repo_idea_run(
+    conn: sqlite3.Connection,
+    *,
+    repo_slug: str,
+    ideated_at: str,
+    snapshot_id: int | None,
+    note_ids_json: str,
+    model: str,
+    error: str | None = None,
+) -> int:
+    cur = conn.execute(
+        """INSERT INTO repo_idea_runs (repo_slug, ideated_at, snapshot_id, note_ids_json, model, error)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (repo_slug, ideated_at, snapshot_id, note_ids_json, model, error),
+    )
+    return cur.lastrowid or 0
+
+
+def mark_repo_ideated(conn: sqlite3.Connection, *, slug: str, ideated_at: str) -> None:
+    conn.execute(
+        "UPDATE repos SET last_ideated_at = ? WHERE slug = ?",
+        (ideated_at, slug),
+    )

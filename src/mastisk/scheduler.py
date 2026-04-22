@@ -183,6 +183,18 @@ async def start_scheduler():
     except Exception as e:
         log.warning("scheduler: github_poller registration failed: %s", e)
 
+    try:
+        from mastisk.agents.github_ideator import GithubIdeator
+        sched.add_job(
+            GithubIdeator().run_once, "interval",
+            seconds=600, id="github_ideator",
+            next_run_time=datetime.now(timezone.utc) + timedelta(seconds=90),
+            max_instances=1, coalesce=True,
+        )
+        log.info("scheduler: github_ideator registered (10min tick, 24h per-repo cadence)")
+    except Exception as e:
+        log.warning("scheduler: github_ideator registration failed: %s", e)
+
     sched.start()
     log.info("scheduler started")
     return sched
