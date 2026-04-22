@@ -49,9 +49,17 @@ export function RepoDetailView({ slug, onNavigate }: Props) {
     <div className="view">
       <div className="view-h">Repo</div>
       <h1 className="view-title">{repo.display_name ?? repo.slug}</h1>
+      {repo.source_type === 'local' ? (
+        <div style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--fg-faint)', marginBottom: 8 }}>
+          local · <code>{repo.local_path}</code>
+        </div>
+      ) : (
+        <div style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--fg-faint)', marginBottom: 8 }}>
+          github · <a href={`https://github.com/${repo.slug}`} target="_blank" rel="noreferrer">{repo.slug}</a>
+        </div>
+      )}
       <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--fg-faint)', marginBottom: 12 }}>
-        {repo.slug}
-        {repo.last_polled_at && <> · polled {new Date(repo.last_polled_at).toLocaleString()}</>}
+        {repo.last_polled_at && <>polled {new Date(repo.last_polled_at).toLocaleString()}</>}
         {repo.last_ideated_at && <> · ideated {new Date(repo.last_ideated_at).toLocaleString()}</>}
         {repo.is_private && <> · <strong>private</strong></>}
       </div>

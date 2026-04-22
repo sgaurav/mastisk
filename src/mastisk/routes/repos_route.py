@@ -124,14 +124,7 @@ async def list_repos_endpoint() -> list[dict]:
     return result
 
 
-@router.get("/{owner}/{name}")
-async def get_repo_endpoint(owner: str, name: str) -> dict:
-    slug = f"{owner.lower()}/{name.lower()}"
-    with connect() as conn:
-        r = q.get_repo(conn, slug)
-        if r is None or r.get("deleted_at") is not None:
-            raise HTTPException(status_code=404, detail="repo not found")
-        snap = q.latest_repo_snapshot(conn, slug)
+def _repo_detail_payload(r: dict, snap: dict | None) -> dict:
     return {
         "slug": r["slug"],
         "source_type": r.get("source_type") or "github",
@@ -146,6 +139,65 @@ async def get_repo_endpoint(owner: str, name: str) -> dict:
         "context_md": r["context_md"],
         "latest_snapshot": snap,
     }
+
+
+# ─── Slug-indexed endpoints (frontend uses these) ─────────────────────────
+# Local repos have slugs like `local:/Users/foo` with colons + slashes that
+# collide with the /{owner}/{name} shape. We use `{slug:path}` with a verb
+# root (`/by-slug/`, `/poll/`, `/ideate/`) so the greedy path converter has
+# no other segments to compete with. Frontend can send slug raw — the only
+# char that would break the URL is `#`, which slugs don't contain.
+
+@router.get("/by-slug/{slug:path}")
+async def get_repo_by_slug_endpoint(slug: str) -> dict:
+    with connect() as conn:
+        r = q.get_repo(conn, slug)
+        if r is None or r.get("deleted_at") is not None:
+            raise HTTPException(status_code=404, detail="repo not found")
+        snap = q.latest_repo_snapshot(conn, slug)
+    return _repo_detail_payload(r, snap)
+
+
+@router.delete("/by-slug/{slug:path}", status_code=204)
+async def delete_repo_by_slug_endpoint(slug: str) -> None:
+    with connect() as conn:
+        r = q.get_repo(conn, slug)
+        if r is None or r.get("deleted_at") is not None:
+            raise HTTPException(status_code=404, detail="repo not found")
+        q.soft_delete_repo(conn, slug)
+
+
+@router.post("/poll/{slug:path}", status_code=202)
+async def poll_now_by_slug_endpoint(slug: str) -> dict:
+    with connect() as conn:
+        r = q.get_repo(conn, slug)
+    if r is None or r.get("deleted_at") is not None:
+        raise HTTPException(status_code=404, detail="repo not found")
+    enqueue("github_poller", "poll", {"repo_slug": slug})
+    return {"ok": True}
+
+
+@router.post("/ideate/{slug:path}", status_code=202)
+async def ideate_now_by_slug_endpoint(slug: str) -> dict:
+    with connect() as conn:
+        r = q.get_repo(conn, slug)
+    if r is None or r.get("deleted_at") is not None:
+        raise HTTPException(status_code=404, detail="repo not found")
+    enqueue("github_ideator", "ideate", {"repo_slug": slug})
+    return {"ok": True}
+
+
+# ─── /{owner}/{name} — legacy github-only endpoints, kept for bookmarks ───
+
+@router.get("/{owner}/{name}")
+async def get_repo_endpoint(owner: str, name: str) -> dict:
+    slug = f"{owner.lower()}/{name.lower()}"
+    with connect() as conn:
+        r = q.get_repo(conn, slug)
+        if r is None or r.get("deleted_at") is not None:
+            raise HTTPException(status_code=404, detail="repo not found")
+        snap = q.latest_repo_snapshot(conn, slug)
+    return _repo_detail_payload(r, snap)
 
 
 @router.delete("/{owner}/{name}", status_code=204)

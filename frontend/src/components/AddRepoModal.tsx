@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import type { View } from '../types';
 
+type Source = 'github' | 'local';
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -10,31 +12,54 @@ interface Props {
 }
 
 export function AddRepoModal({ open, onClose, onAdded, onNavigate }: Props) {
-  const [slug, setSlug] = useState('');
+  const [source, setSource] = useState<Source>('github');
+  const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
-      setSlug('');
+      setSource('github');
+      setValue('');
       setError(null);
       setBusy(false);
       setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [open]);
 
+  // Reset the input when switching tabs so placeholder cues match.
+  useEffect(() => {
+    if (!open) return;
+    setValue('');
+    setError(null);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }, [source, open]);
+
   const submit = async () => {
-    const trimmed = slug.trim();
-    if (!trimmed || !trimmed.includes('/')) {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      setError(source === 'github' ? 'expected owner/repo' : 'expected absolute path');
+      return;
+    }
+    if (source === 'github' && !trimmed.includes('/')) {
       setError('expected owner/repo');
+      return;
+    }
+    if (source === 'local' && !trimmed.startsWith('/') && !trimmed.startsWith('~')) {
+      setError('expected absolute path (starts with / or ~)');
       return;
     }
     setBusy(true);
     setError(null);
     try {
-      await api.repos.add(trimmed);
-      onAdded(trimmed);
+      if (source === 'github') {
+        await api.repos.add(trimmed);
+        onAdded(trimmed);
+      } else {
+        const res = await api.repos.addLocal(trimmed);
+        onAdded(res.slug);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'failed');
       setBusy(false);
@@ -45,7 +70,18 @@ export function AddRepoModal({ open, onClose, onAdded, onNavigate }: Props) {
 
   // Highlight PAT/private-repo hints so users know the fix path.
   const lower = (error ?? '').toLowerCase();
-  const hintsPat = lower.includes('pat') || lower.includes('private');
+  const hintsPat = source === 'github' && (lower.includes('pat') || lower.includes('private'));
+
+  const tabButtonStyle = (active: boolean): React.CSSProperties => ({
+    flex: 1,
+    padding: '6px 10px',
+    border: 'none',
+    background: active ? 'var(--fg)' : 'transparent',
+    color: active ? 'var(--bg)' : 'var(--fg)',
+    cursor: 'pointer',
+    fontSize: 12,
+    fontFamily: 'var(--mono)',
+  });
 
   return (
     <div
@@ -64,15 +100,31 @@ export function AddRepoModal({ open, onClose, onAdded, onNavigate }: Props) {
         onClick={(e) => e.stopPropagation()}
       >
         <div style={{ fontSize: 12, color: 'var(--fg-faint)', marginBottom: 8, fontFamily: 'var(--mono)' }}>
-          add a GitHub repo
+          add a repo
+        </div>
+        <div
+          style={{
+            display: 'flex', gap: 0, marginBottom: 10,
+            border: '1px solid var(--border)', borderRadius: 4, overflow: 'hidden',
+          }}
+        >
+          <button onClick={() => setSource('github')} style={tabButtonStyle(source === 'github')}>
+            GitHub
+          </button>
+          <button onClick={() => setSource('local')} style={tabButtonStyle(source === 'local')}>
+            Local
+          </button>
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginBottom: 4, fontFamily: 'var(--mono)' }}>
+          {source === 'github' ? 'GitHub slug' : 'Absolute path'}
         </div>
         <input
           ref={inputRef}
-          value={slug}
-          onChange={(e) => setSlug(e.target.value)}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') void submit(); if (e.key === 'Escape') onClose(); }}
           disabled={busy}
-          placeholder="owner/repo"
+          placeholder={source === 'github' ? 'owner/repo' : '/Users/you/Code/someproj'}
           style={{
             width: '100%', boxSizing: 'border-box',
             background: 'transparent', color: 'var(--fg)',
@@ -110,7 +162,7 @@ export function AddRepoModal({ open, onClose, onAdded, onNavigate }: Props) {
         )}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
           <button onClick={onClose} disabled={busy}>cancel</button>
-          <button onClick={submit} disabled={busy || !slug.trim()}>{busy ? 'verifying…' : 'add'}</button>
+          <button onClick={submit} disabled={busy || !value.trim()}>{busy ? 'verifying…' : 'add'}</button>
         </div>
       </div>
     </div>

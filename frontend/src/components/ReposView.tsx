@@ -79,7 +79,9 @@ export function ReposView({ onNavigate, onAddRepo, reloadKey }: Props) {
             }}
           >
             <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--fg-faint)' }}>
-              {r.slug}
+              {r.source_type === 'local'
+                ? `📁 ${r.display_name ?? r.slug}`
+                : r.slug}
               {r.snapshot?.stars_count !== null && r.snapshot?.stars_count !== undefined && (
                 <> · ★ {r.snapshot.stars_count}</>
               )}

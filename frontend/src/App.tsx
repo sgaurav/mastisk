@@ -225,12 +225,12 @@ export function App() {
       <AddRepoModal
         open={addRepoOpen}
         onClose={() => setAddRepoOpen(false)}
-        onAdded={() => {
+        onAdded={(slug) => {
           setAddRepoOpen(false);
           // Bump the reload key so ReposView re-fetches if it's already mounted,
-          // and also navigate — covers the case where user was elsewhere in the app.
+          // and land on the repo's detail page so the user sees the fresh row.
           setReposReloadKey((k) => k + 1);
-          navigate('repos');
+          navigate('repo', slug);
         }}
         onNavigate={navigate}
       />

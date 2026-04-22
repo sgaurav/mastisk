@@ -267,6 +267,8 @@ export interface RepoSnapshot {
 
 export interface RepoSummary {
   slug: string;
+  source_type?: 'github' | 'local';
+  local_path?: string | null;
   display_name: string | null;
   description: string | null;
   is_private: boolean;
@@ -277,6 +279,8 @@ export interface RepoSummary {
 
 export interface RepoDetail {
   slug: string;
+  source_type?: 'github' | 'local';
+  local_path?: string | null;
   display_name: string | null;
   description: string | null;
   is_private: boolean;

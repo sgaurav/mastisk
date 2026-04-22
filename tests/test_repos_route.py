@@ -171,3 +171,68 @@ def test_add_local_repo_rejects_non_git_dir(client, tmp_path):
 def test_add_local_repo_rejects_missing_dir(client, tmp_path):
     r = client.post("/api/repos/local", json={"path": str(tmp_path / "nope")})
     assert r.status_code == 422
+
+
+def test_get_repo_by_slug_github(client, db):
+    db.execute(
+        "INSERT INTO repos (slug, source_type, owner, name, display_name) "
+        "VALUES ('a/b', 'github', 'a', 'b', 'a/b')"
+    )
+    # `{slug:path}` accepts the slash directly
+    r = client.get("/api/repos/by-slug/a/b")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["slug"] == "a/b"
+    assert body["source_type"] == "github"
+
+
+def test_get_repo_by_slug_local(client, db, tmp_path):
+    slug = f"local:{tmp_path.resolve()}"
+    db.execute(
+        """INSERT INTO repos (slug, source_type, owner, name, display_name, local_path)
+           VALUES (?, 'local', 'local', 'tmp', 'local:tmp', ?)""",
+        (slug, str(tmp_path)),
+    )
+    r = client.get(f"/api/repos/by-slug/{slug}")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["slug"] == slug
+    assert body["source_type"] == "local"
+    assert body["local_path"] == str(tmp_path)
+
+
+def test_delete_repo_by_slug(client, db, tmp_path):
+    slug = f"local:{tmp_path.resolve()}"
+    db.execute(
+        """INSERT INTO repos (slug, source_type, owner, name, display_name, local_path)
+           VALUES (?, 'local', 'local', 'tmp', 'local:tmp', ?)""",
+        (slug, str(tmp_path)),
+    )
+    r = client.delete(f"/api/repos/by-slug/{slug}")
+    assert r.status_code == 204
+    row = db.execute("SELECT deleted_at FROM repos WHERE slug = ?", (slug,)).fetchone()
+    assert row["deleted_at"] is not None
+
+
+def test_poll_by_slug_enqueues(client, db, tmp_path):
+    slug = f"local:{tmp_path.resolve()}"
+    db.execute(
+        """INSERT INTO repos (slug, source_type, owner, name, display_name, local_path)
+           VALUES (?, 'local', 'local', 'tmp', 'local:tmp', ?)""",
+        (slug, str(tmp_path)),
+    )
+    r = client.post(f"/api/repos/poll/{slug}")
+    assert r.status_code == 202, r.text
+    assert db.execute("SELECT 1 FROM jobs WHERE agent='github_poller'").fetchone()
+
+
+def test_ideate_by_slug_enqueues(client, db, tmp_path):
+    slug = f"local:{tmp_path.resolve()}"
+    db.execute(
+        """INSERT INTO repos (slug, source_type, owner, name, display_name, local_path)
+           VALUES (?, 'local', 'local', 'tmp', 'local:tmp', ?)""",
+        (slug, str(tmp_path)),
+    )
+    r = client.post(f"/api/repos/ideate/{slug}")
+    assert r.status_code == 202, r.text
+    assert db.execute("SELECT 1 FROM jobs WHERE agent='github_ideator'").fetchone()

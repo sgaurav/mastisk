@@ -291,27 +291,43 @@ export const api = {
         return r.json();
       }),
 
+    addLocal: (path: string): Promise<{ slug: string; local_path: string; display_name: string }> =>
+      fetch('/api/repos/local', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path }),
+      }).then(async r => {
+        if (!r.ok) {
+          const msg = await r.text();
+          throw new Error(`${r.status}: ${msg.slice(0, 200)}`);
+        }
+        return r.json();
+      }),
+
     list: (): Promise<RepoSummary[]> =>
       fetch('/api/repos').then(r => r.json()),
 
     get: (slug: string): Promise<RepoDetail> =>
-      fetch(`/api/repos/${slug}`).then(r => {
+      // Slugs can be `owner/name` or `local:/Users/...`; the `{slug:path}`
+      // backend route captures the raw remainder. Leave slashes and colons
+      // intact — fetch already percent-encodes unsafe chars in the rest.
+      fetch(`/api/repos/by-slug/${slug}`).then(r => {
         if (!r.ok) throw new Error(`${r.status}`);
         return r.json();
       }),
 
     delete: (slug: string): Promise<void> =>
-      fetch(`/api/repos/${slug}`, { method: 'DELETE' }).then(r => {
+      fetch(`/api/repos/by-slug/${slug}`, { method: 'DELETE' }).then(r => {
         if (!r.ok) throw new Error(`${r.status}`);
       }),
 
     pollNow: (slug: string): Promise<void> =>
-      fetch(`/api/repos/${slug}/poll-now`, { method: 'POST' }).then(r => {
+      fetch(`/api/repos/poll/${slug}`, { method: 'POST' }).then(r => {
         if (!r.ok) throw new Error(`${r.status}`);
       }),
 
     ideateNow: (slug: string): Promise<void> =>
-      fetch(`/api/repos/${slug}/ideate-now`, { method: 'POST' }).then(r => {
+      fetch(`/api/repos/ideate/${slug}`, { method: 'POST' }).then(r => {
         if (!r.ok) throw new Error(`${r.status}`);
       }),
   },
