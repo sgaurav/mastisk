@@ -663,6 +663,75 @@ def roundtable(
 
 # ═════════════════════════════════ url / logs / vault-path ═════════════════════════════════
 
+@app.command(name="add-repo")
+def add_repo(slug: str = typer.Argument(..., help="GitHub slug like 'owner/repo'")) -> None:
+    """Register a GitHub repo for ingestion + daily ideation."""
+    import asyncio
+    from mastisk.agents.base import enqueue
+    from mastisk.bridges import github_bridge
+    from mastisk.db import queries as q
+    from mastisk.db.queries import connect
+
+    _ensure_db()
+
+    if "/" not in slug or slug.count("/") != 1:
+        typer.secho("slug must be 'owner/repo'", fg="red")
+        raise typer.Exit(code=2)
+    owner, name = slug.lower().split("/", 1)
+    try:
+        meta = asyncio.run(github_bridge.fetch_repo_metadata(owner, name))
+    except github_bridge.GithubNotFound:
+        typer.secho(f"repo not found on GitHub: {slug}", fg="red")
+        raise typer.Exit(code=1)
+    except github_bridge.GithubAuthError:
+        typer.secho("GitHub PAT invalid or missing scope", fg="red")
+        raise typer.Exit(code=1)
+    except github_bridge.GithubRateLimited:
+        typer.secho("GitHub rate limit hit; try later or set a PAT", fg="red")
+        raise typer.Exit(code=1)
+
+    with connect() as conn:
+        q.insert_repo(
+            conn, slug=meta["slug"], owner=meta["owner"], name=meta["name"],
+            display_name=meta["display_name"], description=meta["description"],
+            default_branch=meta["default_branch"], is_private=meta["is_private"],
+        )
+    enqueue("github_poller", "poll", {"repo_slug": meta["slug"]})
+    typer.secho(f"added {meta['slug']} — first poll enqueued", fg="green")
+
+
+@app.command(name="list-repos")
+def list_repos() -> None:
+    """List tracked GitHub repos."""
+    from mastisk.db import queries as q
+    from mastisk.db.queries import connect
+    _ensure_db()
+    with connect() as conn:
+        rows = q.list_repos(conn)
+    if not rows:
+        typer.echo("(no repos tracked; use `mastisk add-repo owner/repo`)")
+        return
+    for r in rows:
+        last = r.get("last_polled_at") or "never"
+        typer.echo(f"  {r['slug']} · last polled: {last}")
+
+
+@app.command(name="remove-repo")
+def remove_repo(slug: str = typer.Argument(..., help="GitHub slug 'owner/repo'")) -> None:
+    """Tombstone a tracked repo; historical snapshots and notes are kept."""
+    from mastisk.db import queries as q
+    from mastisk.db.queries import connect
+    _ensure_db()
+    s = slug.strip().lower()
+    with connect() as conn:
+        r = q.get_repo(conn, s)
+        if r is None or r.get("deleted_at") is not None:
+            typer.secho(f"repo not tracked: {s}", fg="yellow")
+            raise typer.Exit(code=1)
+        q.soft_delete_repo(conn, s)
+    typer.secho(f"removed {s} (historical data kept)", fg="green")
+
+
 @app.command()
 def url():
     """Print desktop, LAN, and Tailnet URLs for this Mastisk instance."""

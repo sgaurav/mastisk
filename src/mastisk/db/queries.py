@@ -1157,3 +1157,100 @@ def update_roundtable_status(
             "UPDATE roundtables SET status = ? WHERE id = ?",
             (status, rt_id),
         )
+
+
+# ─────────────────────────────── GitHub repos ───────────────────────────────
+
+def insert_repo(
+    conn: sqlite3.Connection,
+    *,
+    slug: str,
+    owner: str,
+    name: str,
+    display_name: str | None,
+    description: str | None,
+    default_branch: str | None,
+    is_private: int,
+) -> None:
+    conn.execute(
+        """INSERT OR REPLACE INTO repos
+           (slug, owner, name, display_name, description, default_branch, is_private, added_at, deleted_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT added_at FROM repos WHERE slug = ?), CURRENT_TIMESTAMP), NULL)""",
+        (slug, owner, name, display_name, description, default_branch, is_private, slug),
+    )
+
+
+def get_repo(conn: sqlite3.Connection, slug: str) -> dict | None:
+    row = conn.execute("SELECT * FROM repos WHERE slug = ?", (slug,)).fetchone()
+    return dict(row) if row else None
+
+
+def list_repos(conn: sqlite3.Connection, *, include_deleted: bool = False) -> list[dict]:
+    q = "SELECT * FROM repos"
+    if not include_deleted:
+        q += " WHERE deleted_at IS NULL"
+    q += " ORDER BY added_at DESC"
+    return [dict(r) for r in conn.execute(q).fetchall()]
+
+
+def soft_delete_repo(conn: sqlite3.Connection, slug: str) -> None:
+    conn.execute(
+        "UPDATE repos SET deleted_at = CURRENT_TIMESTAMP WHERE slug = ? AND deleted_at IS NULL",
+        (slug,),
+    )
+
+
+def insert_repo_snapshot(
+    conn: sqlite3.Connection,
+    *,
+    repo_slug: str,
+    polled_at: str,
+    latest_commit_sha: str | None = None,
+    latest_commit_at: str | None = None,
+    open_issues_count: int | None = None,
+    open_prs_count: int | None = None,
+    stars_count: int | None = None,
+    forks_count: int | None = None,
+    commits_json: str | None = None,
+    issues_json: str | None = None,
+    prs_json: str | None = None,
+    readme_hash: str | None = None,
+    readme_excerpt: str | None = None,
+    error: str | None = None,
+) -> int:
+    cur = conn.execute(
+        """INSERT INTO repo_snapshots
+           (repo_slug, polled_at, latest_commit_sha, latest_commit_at,
+            open_issues_count, open_prs_count, stars_count, forks_count,
+            commits_json, issues_json, prs_json, readme_hash, readme_excerpt, error)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (repo_slug, polled_at, latest_commit_sha, latest_commit_at,
+         open_issues_count, open_prs_count, stars_count, forks_count,
+         commits_json, issues_json, prs_json, readme_hash, readme_excerpt, error),
+    )
+    return cur.lastrowid or 0
+
+
+def latest_repo_snapshot(conn: sqlite3.Connection, slug: str) -> dict | None:
+    row = conn.execute(
+        "SELECT * FROM repo_snapshots WHERE repo_slug = ? ORDER BY polled_at DESC, id DESC LIMIT 1",
+        (slug,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def update_repo_context(
+    conn: sqlite3.Connection,
+    *,
+    slug: str,
+    context_md: str | None,
+    polled_at: str,
+) -> None:
+    conn.execute(
+        "UPDATE repos SET context_md = ?, last_polled_at = ? WHERE slug = ?",
+        (context_md, polled_at, slug),
+    )
+
+
+def mark_repo_polled(conn: sqlite3.Connection, *, slug: str, polled_at: str) -> None:
+    conn.execute("UPDATE repos SET last_polled_at = ? WHERE slug = ?", (polled_at, slug))

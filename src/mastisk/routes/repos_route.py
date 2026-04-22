@@ -1,0 +1,126 @@
+"""Repos API — register GitHub repos for ingestion + ideation."""
+from __future__ import annotations
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
+
+from mastisk.agents.base import enqueue
+from mastisk.bridges import github_bridge
+from mastisk.db import queries as q
+from mastisk.db.queries import connect
+
+router = APIRouter(prefix="/api/repos", tags=["repos"])
+
+
+class AddRepoRequest(BaseModel):
+    slug: str = Field(min_length=3)
+
+
+def _parse_slug(slug: str) -> tuple[str, str]:
+    s = slug.strip().lower()
+    if "/" not in s or s.count("/") != 1:
+        raise HTTPException(status_code=422, detail="slug must be 'owner/repo'")
+    owner, name = s.split("/", 1)
+    if not owner or not name:
+        raise HTTPException(status_code=422, detail="slug must be 'owner/repo'")
+    return owner, name
+
+
+@router.post("", status_code=201)
+async def add_repo_endpoint(req: AddRepoRequest) -> dict:
+    owner, name = _parse_slug(req.slug)
+    # Verify the repo exists (via GitHub API)
+    try:
+        meta = await github_bridge.fetch_repo_metadata(owner, name)
+    except github_bridge.GithubNotFound:
+        raise HTTPException(status_code=404, detail="repo not found on GitHub (or PAT can't see it)")
+    except github_bridge.GithubAuthError:
+        raise HTTPException(status_code=401, detail="GitHub PAT invalid or missing scope")
+    except github_bridge.GithubRateLimited:
+        raise HTTPException(status_code=429, detail="GitHub rate limit exceeded; try later")
+    except github_bridge.GithubError as e:
+        raise HTTPException(status_code=502, detail=f"GitHub error: {e}")
+
+    slug = meta["slug"]
+    with connect() as conn:
+        q.insert_repo(
+            conn, slug=slug, owner=meta["owner"], name=meta["name"],
+            display_name=meta["display_name"], description=meta["description"],
+            default_branch=meta["default_branch"], is_private=meta["is_private"],
+        )
+    enqueue("github_poller", "poll", {"repo_slug": slug})
+    return {
+        "slug": slug,
+        "display_name": meta["display_name"],
+        "description": meta["description"],
+    }
+
+
+@router.get("")
+async def list_repos_endpoint() -> list[dict]:
+    with connect() as conn:
+        rows = q.list_repos(conn)
+    result = []
+    for r in rows:
+        with connect() as conn:
+            snap = q.latest_repo_snapshot(conn, r["slug"])
+        result.append({
+            "slug": r["slug"],
+            "display_name": r["display_name"],
+            "description": r["description"],
+            "is_private": bool(r["is_private"]),
+            "last_polled_at": r["last_polled_at"],
+            "last_ideated_at": r["last_ideated_at"],
+            "snapshot": {
+                "polled_at": snap["polled_at"] if snap else None,
+                "stars_count": snap["stars_count"] if snap else None,
+                "forks_count": snap["forks_count"] if snap else None,
+                "open_issues_count": snap["open_issues_count"] if snap else None,
+                "open_prs_count": snap["open_prs_count"] if snap else None,
+                "error": snap["error"] if snap else None,
+            } if snap else None,
+        })
+    return result
+
+
+@router.get("/{owner}/{name}")
+async def get_repo_endpoint(owner: str, name: str) -> dict:
+    slug = f"{owner.lower()}/{name.lower()}"
+    with connect() as conn:
+        r = q.get_repo(conn, slug)
+        if r is None or r.get("deleted_at") is not None:
+            raise HTTPException(status_code=404, detail="repo not found")
+        snap = q.latest_repo_snapshot(conn, slug)
+    return {
+        "slug": r["slug"],
+        "display_name": r["display_name"],
+        "description": r["description"],
+        "is_private": bool(r["is_private"]),
+        "default_branch": r["default_branch"],
+        "added_at": r["added_at"],
+        "last_polled_at": r["last_polled_at"],
+        "last_ideated_at": r["last_ideated_at"],
+        "context_md": r["context_md"],
+        "latest_snapshot": snap,
+    }
+
+
+@router.delete("/{owner}/{name}", status_code=204)
+async def delete_repo_endpoint(owner: str, name: str) -> None:
+    slug = f"{owner.lower()}/{name.lower()}"
+    with connect() as conn:
+        r = q.get_repo(conn, slug)
+        if r is None or r.get("deleted_at") is not None:
+            raise HTTPException(status_code=404, detail="repo not found")
+        q.soft_delete_repo(conn, slug)
+
+
+@router.post("/{owner}/{name}/poll-now", status_code=202)
+async def poll_now_endpoint(owner: str, name: str) -> dict:
+    slug = f"{owner.lower()}/{name.lower()}"
+    with connect() as conn:
+        r = q.get_repo(conn, slug)
+    if r is None or r.get("deleted_at") is not None:
+        raise HTTPException(status_code=404, detail="repo not found")
+    enqueue("github_poller", "poll", {"repo_slug": slug})
+    return {"ok": True}

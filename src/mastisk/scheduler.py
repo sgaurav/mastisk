@@ -171,6 +171,18 @@ async def start_scheduler():
     except Exception as e:
         log.warning("scheduler: roundtable registration failed: %s", e)
 
+    try:
+        from mastisk.agents.github_poller import GithubPoller
+        sched.add_job(
+            GithubPoller().run_once, "interval",
+            seconds=600, id="github_poller",  # 10-min tick, filters by per-repo cadence
+            next_run_time=datetime.now(timezone.utc) + timedelta(seconds=30),
+            max_instances=1, coalesce=True,
+        )
+        log.info("scheduler: github_poller registered (10min tick)")
+    except Exception as e:
+        log.warning("scheduler: github_poller registration failed: %s", e)
+
     sched.start()
     log.info("scheduler started")
     return sched
