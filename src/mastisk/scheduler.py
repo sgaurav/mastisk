@@ -64,6 +64,20 @@ async def start_scheduler():
         log.info("notetaker not scheduled: %s", e)
 
     try:
+        from mastisk.agents.escalator import Escalator
+        # 60s tick per spec §4 + §10. First run 10s after boot so any evaluate
+        # jobs queued by the Notetaker right before a restart drain promptly.
+        sched.add_job(
+            Escalator().run_once, "interval",
+            seconds=Escalator.tick_seconds, id="escalator",
+            max_instances=1,
+            next_run_time=datetime.now(timezone.utc) + timedelta(seconds=10),
+            coalesce=True,
+        )
+    except Exception as e:
+        log.info("escalator not scheduled: %s", e)
+
+    try:
         from mastisk.agents.linter import Linter
         # Linter runs slightly after Scout/Compiler so it sees fresh articles
         # on the same boot without racing them.

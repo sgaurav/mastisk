@@ -205,6 +205,24 @@ async def delete_note_endpoint(note_id: int) -> None:
         pass
 
 
+@router.post("/{note_id}/escalate", status_code=202)
+async def manual_escalate_endpoint(note_id: int) -> dict:
+    """Manually trigger the Escalator on a note. Bypasses the auto-rule.
+
+    Enqueues an ``evaluate`` job with ``trigger='manual'``; the Escalator
+    picks it up on its next tick (within 60s). The note's state flips to
+    ``pending`` only when the handler starts — callers should poll the detail
+    endpoint for the final outcome.
+    """
+    with connect() as conn:
+        row = q.get_note(conn, note_id)
+    if row is None or row["deleted_at"] is not None:
+        raise HTTPException(status_code=404, detail="note not found")
+    from mastisk.agents.base import enqueue
+    enqueue("escalator", "evaluate", {"note_id": note_id, "trigger": "manual"})
+    return {"note_id": note_id, "escalation_state": "pending"}
+
+
 def _note_summary(row: dict) -> dict:
     """Compact view for list endpoints — omits body + escalation plumbing."""
     import json

@@ -391,9 +391,12 @@ class Notetaker(Agent):
                 "notetaker: daily digest regen failed for note %s (non-fatal)", note_id
             )
 
-        # TODO(phase-4-5): enqueue escalator 'evaluate' job here
-        # from mastisk.agents.base import enqueue
-        # enqueue("escalator", "evaluate", {"note_id": note_id})
+        # Hand off to the Escalator. It decides whether the auto-rule fires.
+        # Every hand-off is a `jobs` row so crashes don't lose work. `trigger`
+        # in the payload defaults to 'auto' in the evaluate handler, but being
+        # explicit here makes debugging easier.
+        from mastisk.agents.base import enqueue
+        enqueue("escalator", "evaluate", {"note_id": note_id, "trigger": "auto"})
 
 
 # ─────────────────────────────── module helpers ───────────────────────────────

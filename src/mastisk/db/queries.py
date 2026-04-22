@@ -904,6 +904,45 @@ def ensure_stub_article(
     return True
 
 
+def ensure_note_stub_article(
+    conn: sqlite3.Connection,
+    *,
+    id: str,
+    title: str,
+    kind: str,
+    summary: str,
+    body_md: str,
+    source_note_id: int,
+    slug: str | None = None,
+) -> bool:
+    """Insert an article stub originating from a user note.
+
+    Unlike ``ensure_stub_article`` (which hardcodes ``updated_by='Compiler (stub)'``,
+    ``kind='Entity'``, and a placeholder summary), this helper takes the
+    Claude-derived ``body_md``, ``summary`` and ``kind`` so the Escalator can
+    create a richer wiki-article stub off a user note.
+
+    Returns True iff a new row was inserted; False if ``id`` already existed
+    (never overwrites — same idempotency contract as ``ensure_stub_article``).
+    Writes ``updated_by='escalator (stub)'`` and ``confidence=0.0`` so the stub
+    is visually distinct until a full Compiler/Synthesizer pass rewrites it.
+    """
+    from slugify import slugify as _slugify  # local import: only needed at stub time
+
+    existing = conn.execute("SELECT 1 FROM articles WHERE id = ?", (id,)).fetchone()
+    if existing:
+        return False
+    final_slug = (slug or _slugify(title)[:80] or id)[:80]
+    conn.execute(
+        """INSERT INTO articles (id, kind, title, slug, aka_json, summary, body_md,
+                                 confidence, reading_minutes, updated_by, vault_path,
+                                 source_note_id)
+           VALUES (?, ?, ?, ?, '[]', ?, ?, 0.0, 1, 'escalator (stub)', NULL, ?)""",
+        (id, kind, title, final_slug, summary, body_md, source_note_id),
+    )
+    return True
+
+
 # ─────────────────────────────── Notes ───────────────────────────────
 
 def insert_note(
