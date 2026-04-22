@@ -447,7 +447,7 @@ def write_daily_digest(conn: sqlite3.Connection, date_str: str) -> Path:
     rows = conn.execute(
         """SELECT id, slug, path, created_at, classification, summary, tags_json, body
            FROM notes
-           WHERE DATE(created_at) = ?
+           WHERE substr(created_at, 1, 10) = ?
              AND classified_at IS NOT NULL
              AND deleted_at IS NULL
            ORDER BY created_at ASC, id ASC""",
