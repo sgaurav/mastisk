@@ -191,6 +191,7 @@ mastisk url                 print Desktop + LAN + Tailnet URLs
 mastisk add-feed <url>      subscribe an RSS feed
 mastisk add-youtube <url>   queue a video for Listener
 mastisk note [text]         capture a note (opens $EDITOR if no text)
+mastisk roundtable [text]   fan a prompt out to all LLM backends + synthesize
 mastisk logs                tail agent activity
 mastisk vault-path          show where the vault lives
 mastisk backup              tar the DB + config to ./mastisk-backup-*.tar.gz
@@ -209,6 +210,22 @@ Three ways, any combination:
 - **Any editor:** drop a `.md` file into `vault/_notes/inbox/` — Obsidian, Files app, vim, iOS Shortcut to Files, etc.
 
 Classified notes land in `vault/_notes/YYYY-MM-DD/` with YAML frontmatter. Notes tagged as ideas/questions can auto-escalate to wiki article stubs (see `config.toml → [notes]` for the auto-rule).
+
+---
+
+## Multi-LLM roundtable
+
+Fan any prompt out to Claude, Codex, Gemini, and Ollama in parallel; get a synthesis paragraph that summarizes where they agree, disagree, and who's hallucinating.
+
+Three ways:
+
+- **PWA:** open a note → click `roundtable` → wait ~30s → synthesis appears → optionally save it as a note.
+- **CLI:** `mastisk roundtable "a prompt"` (or `--note 42` / `--article slug`).
+- **Any editor:** not supported for roundtable (unlike notes — the roundtable is a transient research artifact, not user-authored content).
+
+Configure which backends run, timeouts, and per-backend models in `~/Library/Application Support/Mastisk/config.toml` under `[roundtable]`. A missing CLI (e.g. `gemini` not installed) is skipped silently; results are stored with `error='backend not available'`.
+
+Saved roundtables live in the `Roundtables` sidebar entry. Each perspective is kept in full, so you can compare models side-by-side.
 
 ---
 

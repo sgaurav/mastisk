@@ -590,6 +590,77 @@ def note(
     typer.secho(f"captured #{note_id}: {row['slug']}", fg="green")
 
 
+@app.command()
+def roundtable(
+    text: str | None = typer.Argument(None, help="The prompt to run through all backends. If omitted, $EDITOR opens."),
+    note: int | None = typer.Option(None, help="Attach the roundtable to an existing note_id as context."),
+    article: str | None = typer.Option(None, help="Attach the roundtable to an article by id."),
+) -> None:
+    """Fan a prompt out to all configured LLM backends and synthesize the answers.
+
+    Examples:
+        mastisk roundtable "what's the core tension in test-time compute?"
+        mastisk roundtable --note 42
+        mastisk roundtable --article test-time-compute "how does this relate to chain-of-thought?"
+    """
+    import os
+    import subprocess
+    import tempfile
+
+    _ensure_db()
+
+    if text is None:
+        editor = os.environ.get("EDITOR", "vi")
+        with tempfile.NamedTemporaryFile(mode="w+", suffix=".md", delete=False) as tf:
+            tf.write("# Write your roundtable prompt here; save and quit to submit.\n\n")
+            tf.flush()
+            tmp_path = tf.name
+        try:
+            subprocess.run([editor, tmp_path], check=True)
+            text = open(tmp_path).read()
+            text = text.replace("# Write your roundtable prompt here; save and quit to submit.\n\n", "", 1).strip()
+        finally:
+            os.unlink(tmp_path)
+
+    if not text or not text.strip():
+        typer.secho("nothing to send (empty prompt)", fg="yellow")
+        raise typer.Exit(code=1)
+
+    if note is not None and article is not None:
+        typer.secho("cannot use both --note and --article", fg="red")
+        raise typer.Exit(code=2)
+
+    if note is not None:
+        input_type, input_ref = "note", str(note)
+    elif article is not None:
+        input_type, input_ref = "article", article
+    else:
+        input_type, input_ref = "prompt", ""
+
+    from mastisk.agents.base import enqueue
+    from mastisk.db import queries as q
+    from mastisk.db.queries import connect
+
+    # Validate input_ref exists, if applicable
+    if input_type == "note":
+        with connect() as conn:
+            n = q.get_note(conn, int(input_ref))
+        if n is None or n.get("deleted_at") is not None:
+            typer.secho(f"note #{input_ref} not found", fg="red")
+            raise typer.Exit(code=1)
+    elif input_type == "article":
+        with connect() as conn:
+            row = conn.execute("SELECT 1 FROM articles WHERE id = ?", (input_ref,)).fetchone()
+        if row is None:
+            typer.secho(f"article '{input_ref}' not found", fg="red")
+            raise typer.Exit(code=1)
+
+    with connect() as conn:
+        rt_id = q.create_roundtable(conn, input_type=input_type, input_ref=input_ref, prompt=text)
+    enqueue("roundtable", "fan_out", {"roundtable_id": rt_id})
+    typer.secho(f"created roundtable #{rt_id} — check status with `mastisk status` or open the PWA", fg="green")
+
+
 # ═════════════════════════════════ url / logs / vault-path ═════════════════════════════════
 
 @app.command()
