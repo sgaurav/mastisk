@@ -103,7 +103,11 @@ async def save_as_note_endpoint(rt_id: int) -> dict:
 
     ts = datetime.now().astimezone()
     body = _body_from_roundtable(rt)
-    slug = derive_slug(body, ts)
+    # Derive slug from the prompt (or synthesis if no prompt) so each saved
+    # roundtable note has a distinguishable filename instead of sharing the
+    # 'from-roundtable-N' preamble prefix.
+    slug_source = rt["prompt"] or rt.get("synthesis") or f"roundtable-{rt['id']}"
+    slug = derive_slug(slug_source, ts)
     target = notes_inbox_dir() / f"{slug}.md"
     atomic_write(target, body)
     rel_path = str(target.relative_to(vault_dir()))
