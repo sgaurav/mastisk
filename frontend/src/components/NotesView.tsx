@@ -52,6 +52,11 @@ export function NotesView({ onNavigate }: Props) {
               {new Date(n.created_at).toLocaleString()} · {n.source}
               {n.classification && <> · <span>{n.classification}</span></>}
               {!n.classification && <> · <span style={{ opacity: 0.6 }}>unclassified</span></>}
+              {n.escalation_state !== 'none' && (
+                <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--fg-faint)', fontFamily: 'var(--mono)' }}>
+                  [{n.escalation_state}]
+                </span>
+              )}
             </div>
             <div style={{ fontSize: 13, marginTop: 4 }}>
               {n.summary ?? n.slug}

@@ -210,5 +210,11 @@ export const api = {
 
     forArticle: (articleId: string, limit = 50): Promise<Note[]> =>
       fetch(`/api/articles/${encodeURIComponent(articleId)}/notes?limit=${limit}`).then(r => r.json()),
+
+    escalate: (id: number): Promise<{ note_id: number; escalation_state: string }> =>
+      fetch(`/api/notes/${id}/escalate`, { method: 'POST' }).then(r => {
+        if (!r.ok) throw new Error(`${r.status}`);
+        return r.json();
+      }),
   },
 };

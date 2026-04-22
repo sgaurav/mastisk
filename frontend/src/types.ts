@@ -166,6 +166,7 @@ export interface FeedTick {
   obj: string;
   touched: number;
   kind?: string;
+  payload_json?: string | null;
 }
 
 export interface AgentInfo {

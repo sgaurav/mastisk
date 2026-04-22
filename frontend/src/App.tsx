@@ -44,9 +44,30 @@ export function App() {
   const [digest, setDigest] = useState<Digest | null>(null);
   const [feed, setFeed] = useState<FeedTick[]>([]);
   const [agents, setAgents] = useState<AgentInfo[]>([]);
+  const [toast, setToast] = useState<{ msg: string; noteId: number } | null>(null);
 
   const { rows: liveRows } = useFeedStream<FeedTick>([]);
   const mergedFeed: FeedTick[] = [...liveRows, ...feed];
+
+  // Watch for escalator/auto-escalated feed rows and surface a toast so the
+  // user knows a background research job just kicked off on one of their notes.
+  const liveEscalations = liveRows.filter(
+    (r) => (r as FeedTick).agent === 'escalator' && (r as FeedTick).verb === 'auto-escalated',
+  );
+  const lastEscalation = liveEscalations[0];
+  useEffect(() => {
+    if (!lastEscalation) return;
+    const tick = lastEscalation as FeedTick;
+    const payload = tick.payload_json
+      ? (() => { try { return JSON.parse(tick.payload_json!); } catch { return {}; } })()
+      : {};
+    const title = (payload as { title?: string }).title ?? 'note';
+    const noteId = Number(tick.obj);
+    if (!Number.isFinite(noteId)) return;
+    setToast({ msg: `Auto-researching: ${title}`, noteId });
+    const t = setTimeout(() => setToast(null), 5000);
+    return () => clearTimeout(t);
+  }, [lastEscalation]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -177,6 +198,24 @@ export function App() {
         onClose={() => setCaptureOpen(false)}
         onCaptured={(id) => navigate('note', String(id))}
       />
+      {toast && (
+        <div
+          role="status"
+          onClick={() => { navigate('note', String(toast.noteId)); setToast(null); }}
+          style={{
+            position: 'fixed', bottom: 20, right: 20, zIndex: 1100,
+            background: 'var(--bg)', border: '1px solid var(--border)',
+            padding: '8px 12px', borderRadius: 6,
+            boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+            cursor: 'pointer', fontSize: 13, maxWidth: 320,
+          }}
+        >
+          <div style={{ fontSize: 11, color: 'var(--fg-faint)', fontFamily: 'var(--mono)', marginBottom: 2 }}>
+            auto-escalated
+          </div>
+          {toast.msg}
+        </div>
+      )}
       <WikiLinkHoverProvider/>
     </div>
   );
