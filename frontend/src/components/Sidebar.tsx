@@ -10,7 +10,7 @@ interface Props {
   onNavigate: (view: View, id?: string) => void;
 }
 
-const SYS_VIEWS = new Set<View>(['digest', 'queue', 'feed', 'agents', 'graph', 'ingest', 'lint', 'settings', 'open_questions']);
+const SYS_VIEWS = new Set<View>(['digest', 'queue', 'feed', 'agents', 'graph', 'ingest', 'lint', 'settings', 'open_questions', 'notes', 'roundtables']);
 
 export function Sidebar({ vault, pinned, user, currentView, currentArticle, onNavigate }: Props) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -49,6 +49,14 @@ export function Sidebar({ vault, pinned, user, currentView, currentArticle, onNa
         }
         return <Row key={item.id} item={item} currentArticle={currentArticle} currentView={currentView} onNavigate={onNavigate} />;
       })}
+      {/* Hand-coded extras (not in backend vault_tree yet) */}
+      <div
+        className={`side-row ${currentView === 'roundtables' || currentView === 'roundtable' ? 'active' : ''}`}
+        onClick={() => onNavigate('roundtables')}
+      >
+        <span className="glyph">◎</span>
+        <span className="label">Roundtables</span>
+      </div>
       {user && (
         <div className="user-pill" onClick={() => onNavigate('ingest')} role="button" title="Sources & ingest">
           <div className="user-avatar">{user.initials}</div>

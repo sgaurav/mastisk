@@ -1,7 +1,8 @@
 import type {
   Article, ArticlePreview, Artifact, ArtifactKind, AskResponse, Digest, Feed,
   FeedTick, AgentInfo, GraphData, Job, Note, OpenQuestionsResponse, PendingSynthesisResponse,
-  PinnedItem, SettingsBundle, SettingsPatch, SynthesisRunResponse, UserInfo, VaultItem,
+  PinnedItem, Roundtable, RoundtableSummary, SettingsBundle, SettingsPatch, SynthesisRunResponse,
+  UserInfo, VaultItem,
 } from './types';
 
 const BASE = '/api';
@@ -213,6 +214,31 @@ export const api = {
 
     escalate: (id: number): Promise<{ note_id: number; escalation_state: string }> =>
       fetch(`/api/notes/${id}/escalate`, { method: 'POST' }).then(r => {
+        if (!r.ok) throw new Error(`${r.status}`);
+        return r.json();
+      }),
+  },
+
+  roundtables: {
+    create: (input_type: 'note' | 'article' | 'prompt', input_ref: string, prompt: string):
+      Promise<{ id: number; status: string }> =>
+      fetch('/api/roundtables', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input_type, input_ref, prompt }),
+      }).then(r => { if (!r.ok) throw new Error(`${r.status}`); return r.json(); }),
+
+    list: (limit = 50): Promise<RoundtableSummary[]> =>
+      fetch(`/api/roundtables?limit=${limit}`).then(r => r.json()),
+
+    get: (id: number): Promise<Roundtable> =>
+      fetch(`/api/roundtables/${id}`).then(r => {
+        if (r.status === 404) throw new Error('not found');
+        return r.json();
+      }),
+
+    saveAsNote: (id: number): Promise<{ note_id: number; slug: string; reused: boolean }> =>
+      fetch(`/api/roundtables/${id}/save-as-note`, { method: 'POST' }).then(r => {
         if (!r.ok) throw new Error(`${r.status}`);
         return r.json();
       }),

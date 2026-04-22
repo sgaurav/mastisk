@@ -108,6 +108,23 @@ export function NoteView({ noteId, onNavigate }: Props) {
       <div style={{ marginTop: 16, display: 'flex', gap: 8 }}>
         <button onClick={() => onNavigate('notes')}>← all notes</button>
         <button
+          onClick={async () => {
+            try {
+              const res = await api.roundtables.create(
+                'note',
+                String(note.id),
+                note.summary ?? note.body?.slice(0, 100) ?? 'discuss',
+              );
+              onNavigate('roundtable', String(res.id));
+            } catch (e) {
+              setErr(e instanceof Error ? e.message : 'roundtable failed');
+            }
+          }}
+          title="Fan this note out to Claude + Codex + Gemini + Ollama and synthesize."
+        >
+          roundtable
+        </button>
+        <button
           disabled={deleting || escalating || note.escalation_state === 'pending' || note.escalation_state === 'retrying'}
           onClick={onEscalate}
           title={

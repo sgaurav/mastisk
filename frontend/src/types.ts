@@ -219,11 +219,41 @@ export interface AskResponse {
   hits: { id: string; title: string; snippet?: string }[];
 }
 
+export interface RoundtablePerspective {
+  backend: string;
+  model: string | null;
+  content: string | null;
+  error: string | null;
+  latency_ms: number | null;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface RoundtableSummary {
+  id: number;
+  input_type: 'note' | 'article' | 'prompt';
+  input_ref: string;
+  status: 'pending' | 'running' | 'done' | 'failed';
+  synthesis_preview: string | null;
+  synthesis_model: string | null;
+  created_at: string;
+  finished_at: string | null;
+  saved_as_note_id: number | null;
+}
+
+export interface Roundtable extends RoundtableSummary {
+  prompt: string;
+  synthesis: string | null;
+  error: string | null;
+  perspectives: RoundtablePerspective[];
+}
+
 export type View =
   | 'article' | 'digest' | 'feed' | 'agents'
   | 'graph' | 'mobile' | 'queue' | 'ingest' | 'lint' | 'settings'
   | 'open_questions'
-  | 'notes' | 'note';
+  | 'notes' | 'note'
+  | 'roundtables' | 'roundtable';
 
 export interface BudgetValues {
   scout: number;

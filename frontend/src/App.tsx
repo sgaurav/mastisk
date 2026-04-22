@@ -24,6 +24,8 @@ import { WikiLinkHoverProvider } from './components/WikiLinkHover';
 import { NotesView } from './components/NotesView';
 import { NoteView } from './components/NoteView';
 import { NoteCaptureModal } from './components/NoteCaptureModal';
+import { RoundtablesListView } from './components/RoundtablesListView';
+import { RoundtableView } from './components/RoundtableView';
 
 export function App() {
   const [theme, setTheme] = useState<'light' | 'dark'>(
@@ -32,6 +34,7 @@ export function App() {
 
   const { route, navigate: routeNavigate, replace } = useRoute();
   const { view, articleId: currentArticle, noteId: currentNote, date: currentDate } = route;
+  const currentRoundtable = route.roundtableId;
 
   const [sideOpen, setSideOpen] = useState(window.innerWidth > 900);
   const [railOpen, setRailOpen] = useState(window.innerWidth > 900);
@@ -167,6 +170,10 @@ export function App() {
         {view === 'settings' && <SettingsView/>}
         {view === 'notes' && <NotesView onNavigate={navigate}/>}
         {view === 'note' && currentNote !== null && <NoteView noteId={currentNote} onNavigate={navigate}/>}
+        {view === 'roundtables' && <RoundtablesListView onNavigate={navigate}/>}
+        {view === 'roundtable' && currentRoundtable !== null && (
+          <RoundtableView roundtableId={currentRoundtable} onNavigate={navigate}/>
+        )}
         {view === 'mobile' && (
           <div className="view">
             <div className="view-h">System</div>
