@@ -3,6 +3,7 @@ import type { Article, View } from '../types';
 import { Icon } from './icons';
 import { api } from '../api';
 import { SynthesisFeedback } from './SynthesisFeedback';
+import { NoteCaptureModal, type CaptureContext } from './NoteCaptureModal';
 
 interface Props {
   article: Article;
@@ -15,6 +16,7 @@ interface Pop { x: number; y: number; text: string; }
 export function ArticleView({ article, onAsk, onNavigate }: Props) {
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const [pop, setPop] = useState<Pop | null>(null);
+  const [captureCtx, setCaptureCtx] = useState<CaptureContext | null>(null);
   const readStartRef = useRef<number>(Date.now());
 
   // Emit "opened" signal on mount; "time_read" on unmount.
@@ -146,6 +148,24 @@ export function ArticleView({ article, onAsk, onNavigate }: Props) {
             <div key={i} className="open">
               <h2>{s.h}</h2>
               <p dangerouslySetInnerHTML={{ __html: s.body }}/>
+              <div style={{ marginTop: 14, display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  style={{
+                    fontSize: 11, padding: '4px 10px',
+                    border: '1px solid var(--border)', borderRadius: 4,
+                    background: 'var(--bg-soft, transparent)', cursor: 'pointer',
+                    fontFamily: 'var(--mono)',
+                  }}
+                  onClick={() => setCaptureCtx({
+                    article_id: article.id,
+                    section_heading: s.h,
+                    question_html: s.body,
+                  })}
+                >
+                  + add thoughts
+                </button>
+              </div>
             </div>
           );
           return (
@@ -214,6 +234,13 @@ export function ArticleView({ article, onAsk, onNavigate }: Props) {
           </button>
         </div>
       )}
+
+      <NoteCaptureModal
+        open={captureCtx !== null}
+        onClose={() => setCaptureCtx(null)}
+        onCaptured={() => setCaptureCtx(null)}
+        context={captureCtx ?? undefined}
+      />
     </div>
   );
 }
