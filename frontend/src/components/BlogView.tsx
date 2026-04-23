@@ -5,13 +5,19 @@ import type { BlogPostDetail, BlogPostSource, View } from '../types';
 interface Props {
   blogPostId: number;
   onNavigate: (view: View, id?: string) => void;
+  /**
+   * Fired on every successful fetch and on unmount (with null). Lets the
+   * parent surface the live draft title in breadcrumbs / titlebar without
+   * duplicating the polling state.
+   */
+  onLoaded?: (bp: BlogPostDetail | null) => void;
 }
 
 // Matches `[source 3]` and `[source 3, source 7]` — same shape the agent
 // emits and the backend persists (spec §8.4).
 const CITATION_RE = /\[source\s+(\d+(?:\s*,\s*(?:source\s+)?\d+)*)\s*\]/gi;
 
-export function BlogView({ blogPostId, onNavigate }: Props) {
+export function BlogView({ blogPostId, onNavigate, onLoaded }: Props) {
   const [bp, setBp] = useState<BlogPostDetail | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -33,12 +39,34 @@ export function BlogView({ blogPostId, onNavigate }: Props) {
     return () => { mountedRef.current = false; };
   }, []);
 
+  // Push loaded data up to the parent so the titlebar/breadcrumb can reflect
+  // the live draft title. Clears on unmount so the crumb doesn't flash stale
+  // data when the user navigates away. Ref-indirects the callback to keep the
+  // effect dependency stable (otherwise parents passing an inline function
+  // would re-fire cleanup on every render and emit spurious nulls).
+  const onLoadedRef = useRef(onLoaded);
+  useEffect(() => { onLoadedRef.current = onLoaded; }, [onLoaded]);
+  useEffect(() => {
+    // Only propagate positive data. The id-change reset sets bp=null, and
+    // emitting onLoaded(null) there makes the Titlebar flash its "Draft"
+    // fallback on /blog/41 → /blog/42 transitions. Unmount cleanup (below)
+    // still fires onLoaded(null) so the crumb clears when the view goes away.
+    if (bp) onLoadedRef.current?.(bp);
+  }, [bp]);
+  useEffect(() => {
+    return () => { onLoadedRef.current?.(null); };
+  }, []);
+
   // Reset view state whenever we switch to a different draft. Keyed on
   // blogPostId only (not pollToken) so regenerate doesn't flash a loading
   // skeleton — the polling effect will overwrite bp with fresh data first.
+  // We also reset bpRef synchronously here: the `setBp(null)` above only
+  // takes effect on the next render, but the polling effect's catch may read
+  // bpRef.current before that — stale data would feed the retry decision.
   useEffect(() => {
     setBp(null);
     setErr(null);
+    bpRef.current = null;
   }, [blogPostId]);
 
   // Polling loop while status is pending/running. Re-fetches in the same

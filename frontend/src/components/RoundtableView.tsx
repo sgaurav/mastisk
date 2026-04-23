@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { api } from '../api';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { api, ApiError } from '../api';
 import type { Roundtable, View } from '../types';
 
 interface Props {
@@ -11,26 +11,62 @@ export function RoundtableView({ roundtableId, onNavigate }: Props) {
   const [rt, setRt] = useState<Roundtable | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const mountedRef = useRef(true);
+  const rtRef = useRef<Roundtable | null>(null);
+
+  // Keep a ref in sync with rt so the polling catch can read the latest
+  // known status without rebuilding the effect closure on every state change.
+  useEffect(() => { rtRef.current = rt; }, [rt]);
 
   useEffect(() => {
-    let cancelled = false;
-    let timer: number | null = null;
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
-    const fetchOnce = () => {
-      api.roundtables.get(roundtableId)
-        .then((data) => {
-          if (cancelled) return;
-          setRt(data);
-          if (data.status === 'pending' || data.status === 'running') {
-            timer = window.setTimeout(fetchOnce, 2000);
-          }
-        })
-        .catch((e) => {
-          if (!cancelled) setErr(e instanceof Error ? e.message : 'failed');
-        });
+  // Reset view state whenever we switch to a different roundtable. Without
+  // this, the old synthesis/title flashes in while the new fetch is in-flight.
+  // rtRef is cleared synchronously so the polling effect's catch can't read
+  // the previous roundtable's status before the `setRt(null)` settles.
+  useEffect(() => {
+    setRt(null);
+    setErr(null);
+    rtRef.current = null;
+  }, [roundtableId]);
+
+  // Polling loop while status is pending/running. Re-fetches in the same
+  // effect that cancels on unmount and on id changes.
+  useEffect(() => {
+    let cancelled = false;
+    let timer: number | undefined;
+
+    const fetchOnce = async () => {
+      try {
+        const data = await api.roundtables.get(roundtableId);
+        if (cancelled) return;
+        setRt(data);
+        setErr(null);
+        if (data.status === 'pending' || data.status === 'running') {
+          timer = window.setTimeout(fetchOnce, 2000);
+        }
+      } catch (e) {
+        if (cancelled) return;
+        const apiErr = e instanceof ApiError ? e : null;
+        if (apiErr && apiErr.status === 404) {
+          setErr('roundtable not found');
+          return;  // terminal — don't retry
+        }
+        // Transient (network, 5xx). Retry with backoff only if the last
+        // known status was non-terminal; otherwise surface the error.
+        const lastStatus = rtRef.current?.status;
+        if (!lastStatus || lastStatus === 'pending' || lastStatus === 'running') {
+          timer = window.setTimeout(fetchOnce, 5000);
+        } else {
+          setErr(e instanceof Error ? e.message : 'failed');
+        }
+      }
     };
 
-    fetchOnce();
+    void fetchOnce();
     return () => {
       cancelled = true;
       if (timer) window.clearTimeout(timer);
@@ -42,14 +78,16 @@ export function RoundtableView({ roundtableId, onNavigate }: Props) {
     setSaving(true);
     try {
       const res = await api.roundtables.saveAsNote(rt.id);
+      if (!mountedRef.current) return;
       onNavigate('note', String(res.note_id));
     } catch (e) {
+      if (!mountedRef.current) return;
       setErr(e instanceof Error ? e.message : 'save failed');
       setSaving(false);
     }
   }, [rt, onNavigate]);
 
-  if (err) return <div className="view"><p style={{ color: 'var(--danger, crimson)' }}>{err}</p></div>;
+  if (err && !rt) return <div className="view"><p style={{ color: 'var(--danger, crimson)' }}>{err}</p></div>;
   if (!rt) return <div className="view"><p style={{ color: 'var(--fg-faint)', fontFamily: 'var(--mono)', fontSize: 12 }}>loading…</p></div>;
 
   const inputLink = rt.input_type === 'note' && rt.input_ref
@@ -71,6 +109,12 @@ export function RoundtableView({ roundtableId, onNavigate }: Props) {
         <p style={{ color: 'var(--fg-faint)', fontFamily: 'var(--mono)', fontSize: 12 }}>
           fanning out to backends — this can take 10-30s…
         </p>
+      )}
+
+      {err && (
+        <div style={{ color: 'var(--danger, crimson)', marginBottom: 12, fontSize: 12 }}>
+          {err}
+        </div>
       )}
 
       {rt.synthesis && (

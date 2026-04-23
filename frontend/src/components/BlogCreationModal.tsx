@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
+import { useModalA11y } from '../hooks/useModalA11y';
 
 interface Props {
   open: boolean;
@@ -18,13 +19,19 @@ export function BlogCreationModal({ open, onClose, onCreated }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  const { modalRef, ariaProps } = useModalA11y({
+    open,
+    onClose,
+    initialFocusRef: textareaRef,
+    canClose: () => !busy,
+  });
+
   useEffect(() => {
     if (open) {
       setTheme('');
       setWindowDays(14);
       setBusy(false);
       setError(null);
-      setTimeout(() => textareaRef.current?.focus(), 50);
     }
   }, [open]);
 
@@ -60,14 +67,13 @@ export function BlogCreationModal({ open, onClose, onCreated }: Props) {
     }
   }, [theme, windowDays, onCreated]);
 
+  // ⌘↵ to submit. Escape is handled globally by the a11y hook, gated on !busy.
   const onKeyDown = useCallback((e: React.KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
       void submit();
-    } else if (e.key === 'Escape') {
-      onClose();
     }
-  }, [submit, onClose]);
+  }, [submit]);
 
   if (!open) return null;
 
@@ -81,6 +87,10 @@ export function BlogCreationModal({ open, onClose, onCreated }: Props) {
       onClick={busy ? undefined : onClose}
     >
       <div
+        ref={modalRef}
+        {...ariaProps}
+        aria-labelledby="blog-creation-title"
+        tabIndex={-1}
         style={{
           background: 'var(--bg)', border: '1px solid var(--line)',
           borderRadius: 8, padding: 16, width: 'min(560px, 92vw)',
@@ -88,7 +98,10 @@ export function BlogCreationModal({ open, onClose, onCreated }: Props) {
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ fontSize: 12, color: 'var(--fg-faint)', marginBottom: 8, fontFamily: 'var(--mono)' }}>
+        <div
+          id="blog-creation-title"
+          style={{ fontSize: 12, color: 'var(--fg-faint)', marginBottom: 8, fontFamily: 'var(--mono)' }}
+        >
           draft a blog post — ⌘↵ to submit, esc to cancel
         </div>
 

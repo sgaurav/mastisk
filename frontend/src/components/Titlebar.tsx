@@ -21,6 +21,8 @@ interface Props {
   view: View;
   articleTitle?: string;
   articleKind?: string;
+  blogPostTitle?: string | null;
+  blogPostStatus?: 'pending' | 'running' | 'done' | 'failed' | null;
   theme: 'light' | 'dark';
   onTheme: () => void;
   onToggleSide: () => void;
@@ -37,19 +39,40 @@ const KIND_PLURAL: Record<string, string> = {
   Synthesis: 'Synthesis',
 };
 
-function buildCrumb(view: View, articleTitle?: string, articleKind?: string): string[] {
+function buildCrumb(
+  view: View,
+  articleTitle?: string,
+  articleKind?: string,
+  blogPostTitle?: string | null,
+  blogPostStatus?: 'pending' | 'running' | 'done' | 'failed' | null,
+): string[] {
   const base = CRUMB[view] ?? ['Wiki'];
   // Copy — never mutate the module-level const
   const crumb = [...base];
   if (view === 'article') {
     if (articleKind && KIND_PLURAL[articleKind]) crumb[1] = KIND_PLURAL[articleKind];
     if (articleTitle) crumb.push(articleTitle);
+  } else if (view === 'blog_post') {
+    // Replace the static "Draft" segment with the live title once loaded;
+    // before then show an in-progress hint so the crumb doesn't stay stale.
+    const trimmed = blogPostTitle?.trim();
+    if (trimmed) {
+      crumb[crumb.length - 1] = trimmed;
+    } else if (blogPostStatus === 'pending' || blogPostStatus === 'running') {
+      crumb[crumb.length - 1] = 'Draft in progress';
+    } else if (blogPostStatus === 'failed') {
+      crumb[crumb.length - 1] = 'Draft failed';
+    }
+    // On null status (still loading the row) we leave the default "Draft".
   }
   return crumb.filter(Boolean);
 }
 
-export function Titlebar({ view, articleTitle, articleKind, theme, onTheme, onToggleSide, onToggleRail, onAsk, onCapture, onSearchClick }: Props) {
-  const crumb = buildCrumb(view, articleTitle, articleKind);
+export function Titlebar({
+  view, articleTitle, articleKind, blogPostTitle, blogPostStatus,
+  theme, onTheme, onToggleSide, onToggleRail, onAsk, onCapture, onSearchClick,
+}: Props) {
+  const crumb = buildCrumb(view, articleTitle, articleKind, blogPostTitle, blogPostStatus);
 
   return (
     <div className="titlebar">

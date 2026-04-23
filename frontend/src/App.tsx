@@ -3,7 +3,7 @@ import { api } from './api';
 import { useRoute } from './router';
 import { useFeedStream } from './stream';
 import type {
-  Article, AgentInfo, Digest, FeedTick, PinnedItem, VaultItem, View,
+  Article, AgentInfo, BlogPostDetail, Digest, FeedTick, PinnedItem, VaultItem, View,
 } from './types';
 
 import { Titlebar } from './components/Titlebar';
@@ -56,6 +56,7 @@ export function App() {
 
   const [sidebar, setSidebar] = useState<{ vault: VaultItem[]; pinned: PinnedItem[]; user: import('./types').UserInfo } | null>(null);
   const [article, setArticle] = useState<Article | null>(null);
+  const [blogPostDetail, setBlogPostDetail] = useState<BlogPostDetail | null>(null);
   const [digest, setDigest] = useState<Digest | null>(null);
   const [feed, setFeed] = useState<FeedTick[]>([]);
   const [agents, setAgents] = useState<AgentInfo[]>([]);
@@ -148,6 +149,8 @@ export function App() {
         view={view}
         articleTitle={article?.title}
         articleKind={article?.kind}
+        blogPostTitle={blogPostDetail?.title ?? null}
+        blogPostStatus={blogPostDetail?.status ?? null}
         theme={theme}
         onTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
         onToggleSide={() => setSideOpen((s) => !s)}
@@ -209,7 +212,11 @@ export function App() {
           />
         )}
         {view === 'blog_post' && currentBlogPost !== null && (
-          <BlogView blogPostId={currentBlogPost} onNavigate={navigate}/>
+          <BlogView
+            blogPostId={currentBlogPost}
+            onNavigate={navigate}
+            onLoaded={setBlogPostDetail}
+          />
         )}
         {view === 'mobile' && (
           <div className="view">

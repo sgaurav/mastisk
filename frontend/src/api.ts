@@ -253,8 +253,8 @@ export const api = {
       fetch(`/api/roundtables?limit=${limit}`).then(r => r.json()),
 
     get: (id: number): Promise<Roundtable> =>
-      fetch(`/api/roundtables/${id}`).then(r => {
-        if (r.status === 404) throw new Error('not found');
+      fetch(`/api/roundtables/${id}`).then(async r => {
+        if (!r.ok) await throwApiError(r);
         return r.json();
       }),
 

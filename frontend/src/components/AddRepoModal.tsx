@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
+import { useModalA11y } from '../hooks/useModalA11y';
 import type { BrowseEntry, View } from '../types';
 
 type Source = 'github' | 'local';
@@ -25,6 +26,12 @@ export function AddRepoModal({ open, onClose, onAdded, onNavigate }: Props) {
   } | null>(null);
   const [browseBusy, setBrowseBusy] = useState(false);
 
+  const { modalRef, ariaProps } = useModalA11y({
+    open,
+    onClose,
+    initialFocusRef: inputRef,
+  });
+
   useEffect(() => {
     if (open) {
       setSource('github');
@@ -33,7 +40,6 @@ export function AddRepoModal({ open, onClose, onAdded, onNavigate }: Props) {
       setBusy(false);
       setBrowseOpen(false);
       setBrowseState(null);
-      setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [open]);
 
@@ -121,13 +127,20 @@ export function AddRepoModal({ open, onClose, onAdded, onNavigate }: Props) {
       onClick={onClose}
     >
       <div
+        ref={modalRef}
+        {...ariaProps}
+        aria-labelledby="add-repo-title"
+        tabIndex={-1}
         style={{
           background: 'var(--bg)', border: '1px solid var(--border)',
           borderRadius: 8, padding: 16, width: 'min(440px, 92vw)',
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ fontSize: 12, color: 'var(--fg-faint)', marginBottom: 8, fontFamily: 'var(--mono)' }}>
+        <div
+          id="add-repo-title"
+          style={{ fontSize: 12, color: 'var(--fg-faint)', marginBottom: 8, fontFamily: 'var(--mono)' }}
+        >
           add a repo
         </div>
         <div
@@ -152,7 +165,7 @@ export function AddRepoModal({ open, onClose, onAdded, onNavigate }: Props) {
               ref={inputRef}
               value={value}
               onChange={(e) => setValue(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') void submit(); if (e.key === 'Escape') onClose(); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') void submit(); }}
               disabled={busy}
               placeholder="/Users/you/Code/someproj"
               style={{
@@ -171,7 +184,7 @@ export function AddRepoModal({ open, onClose, onAdded, onNavigate }: Props) {
             ref={inputRef}
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') void submit(); if (e.key === 'Escape') onClose(); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') void submit(); }}
             disabled={busy}
             placeholder="owner/repo"
             style={{

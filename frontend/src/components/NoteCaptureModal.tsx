@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
+import { useModalA11y } from '../hooks/useModalA11y';
 
 export interface CaptureContext {
   article_id: string;
@@ -26,11 +27,16 @@ export function NoteCaptureModal({ open, onClose, onCaptured, context }: Props) 
   const [error, setError] = useState<string | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
 
+  const { modalRef, ariaProps } = useModalA11y({
+    open,
+    onClose,
+    initialFocusRef: ref,
+  });
+
   useEffect(() => {
     if (open) {
       setText('');
       setError(null);
-      setTimeout(() => ref.current?.focus(), 50);
     }
   }, [open]);
 
@@ -50,14 +56,13 @@ export function NoteCaptureModal({ open, onClose, onCaptured, context }: Props) 
     }
   }, [text, onCaptured, onClose, context]);
 
+  // ⌘↵ to submit. Escape is handled by the a11y hook globally.
   const onKeyDown = useCallback((e: React.KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
       void submit();
-    } else if (e.key === 'Escape') {
-      onClose();
     }
-  }, [submit, onClose]);
+  }, [submit]);
 
   if (!open) return null;
 
@@ -74,6 +79,10 @@ export function NoteCaptureModal({ open, onClose, onCaptured, context }: Props) 
       onClick={onClose}
     >
       <div
+        ref={modalRef}
+        {...ariaProps}
+        aria-labelledby="note-capture-title"
+        tabIndex={-1}
         className="note-capture-card"
         style={{
           background: 'var(--bg)', border: '1px solid var(--border)',
@@ -95,7 +104,10 @@ export function NoteCaptureModal({ open, onClose, onCaptured, context }: Props) 
             </div>
           </div>
         )}
-        <div style={{ fontSize: 12, color: 'var(--fg-faint)', marginBottom: 8, fontFamily: 'var(--mono)' }}>
+        <div
+          id="note-capture-title"
+          style={{ fontSize: 12, color: 'var(--fg-faint)', marginBottom: 8, fontFamily: 'var(--mono)' }}
+        >
           capture note — ⌘↵ to save, esc to cancel
         </div>
         <textarea
