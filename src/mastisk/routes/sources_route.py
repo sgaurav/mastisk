@@ -183,6 +183,22 @@ def list_jobs(limit: int = 50):
                 ).fetchone()
                 if art:
                     title = art["title"]
+            elif r["agent"] in ("notetaker", "escalator") and payload.get("note_id"):
+                note = conn.execute(
+                    "SELECT slug, summary, classification, source FROM notes WHERE id=?",
+                    (payload["note_id"],),
+                ).fetchone()
+                if note:
+                    # Pre-classify notes have no summary yet — slug is the best
+                    # human-readable fallback (matches the notes list UI).
+                    title = note["summary"] or note["slug"]
+                    subtitle = note["classification"] or note["source"]
+            elif r["agent"] in ("github_poller", "github_ideator") and payload.get("repo_slug"):
+                # Strip only the ``local:`` scheme prefix; github slugs are
+                # already in owner/name form. The queue row's CSS truncates
+                # long paths, so showing the full slug is fine.
+                slug = payload["repo_slug"]
+                title = slug[len("local:") :] if slug.startswith("local:") else slug
 
             # Resolve the downstream article id (if one exists) so the queue row
             # can become clickable. For compiler/listener sources, that's the
