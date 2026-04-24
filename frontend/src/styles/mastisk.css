@@ -1176,6 +1176,25 @@ a { color: inherit; }
   pointer-events: none;
   opacity: 0.85;
 }
+/* Graph appears settled-in-place; a gentle fade + rise makes entry feel intentional. */
+.graph-canvas .graph-svg,
+.graph-canvas .graph-labels,
+.graph-canvas .graph-minimap { opacity: 0; }
+.graph-canvas.is-ready .graph-svg,
+.graph-canvas.is-ready .graph-labels,
+.graph-canvas.is-ready .graph-minimap {
+  animation: graph-enter 320ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.graph-canvas.is-ready .graph-minimap { animation-delay: 80ms; }
+@keyframes graph-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .graph-canvas.is-ready .graph-svg,
+  .graph-canvas.is-ready .graph-labels,
+  .graph-canvas.is-ready .graph-minimap { animation: none; opacity: 1; }
+}
 
 /* ---------- mobile preview block ---------- */
 .mobile-section {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react';
 import {
   forceSimulation,
   forceLink,
@@ -72,12 +72,18 @@ export function GraphView({ onNavigate }: Props) {
   const linksRef = useRef<SimLink[]>([]);
   const [, setTick] = useState(0);
   const bump = useCallback(() => setTick((t) => (t + 1) % 1_000_000), []);
+  const [prewarmed, setPrewarmed] = useState(false);
+  const [layoutReady, setLayoutReady] = useState(false);
 
   useEffect(() => {
     api.graph().then(setData).catch((e) => setError(String(e)));
   }, []);
 
-  useEffect(() => {
+  // Build the simulation and run it to full cooling synchronously, off-screen.
+  // 300 iterations matches d3-force's default schedule (alphaMin=0.001, alphaDecay≈0.0228)
+  // so nodes arrive at their settled positions before the first paint — the user never
+  // sees the simulation cool down in front of them.
+  useLayoutEffect(() => {
     if (!data) return;
     const nodes: SimNode[] = data.nodes.map((n) => {
       const c = CLUSTER_CENTERS[n.kind] ?? [0.5, 0.5];
@@ -99,8 +105,6 @@ export function GraphView({ onNavigate }: Props) {
       target: e.to_article,
       weight: e.weight,
     }));
-    nodesRef.current = nodes;
-    linksRef.current = links;
 
     const sim = forceSimulation<SimNode>(nodes)
       .force(
@@ -117,16 +121,27 @@ export function GraphView({ onNavigate }: Props) {
         'y',
         forceY<SimNode>((d) => (CLUSTER_CENTERS[d.kind] ?? [0.5, 0.5])[1] * WORLD_H).strength(0.06),
       )
-      .on('tick', bump);
+      .stop();
+    for (let i = 0; i < 300; i++) sim.tick();
+    // Wire React re-renders only AFTER pre-warm, so steady state is idle and
+    // only user-driven restarts (node drag) cost reconciliation.
+    sim.on('tick', bump);
 
+    nodesRef.current = nodes;
+    linksRef.current = links;
     simRef.current = sim;
+    setPrewarmed(true);
     return () => {
       sim.stop();
       simRef.current = null;
+      setPrewarmed(false);
+      setLayoutReady(false);
     };
   }, [data, bump]);
 
-  useEffect(() => {
+  // Re-runs when the canvas first mounts (after data arrives) so we measure
+  // against the real DOM synchronously, before the first paint of the graph.
+  useLayoutEffect(() => {
     const el = canvasRef.current;
     if (!el) return;
     const measure = () => {
@@ -137,7 +152,7 @@ export function GraphView({ onNavigate }: Props) {
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [data]);
 
   const fitToViewport = useCallback(() => {
     const nodes = nodesRef.current;
@@ -162,16 +177,17 @@ export function GraphView({ onNavigate }: Props) {
     setPan({ x: viewport.w / 2 - cx * z, y: viewport.h / 2 - cy * z });
   }, [viewport.w, viewport.h, hiddenKinds]);
 
+  // One-shot synchronous fit after pre-warm + viewport measurement. No setTimeout,
+  // no observable "snap" — fit lands in the same paint as the first node render.
+  // Window resizes afterwards do NOT auto-refit (would yank the user's view).
   const firstFitRef = useRef(false);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (firstFitRef.current) return;
-    if (!data || !nodesRef.current.length || !viewport.w || !viewport.h) return;
-    const id = window.setTimeout(() => {
-      fitToViewport();
-      firstFitRef.current = true;
-    }, 350);
-    return () => window.clearTimeout(id);
-  }, [data, viewport.w, viewport.h, fitToViewport]);
+    if (!prewarmed || !nodesRef.current.length || !viewport.w || !viewport.h) return;
+    firstFitRef.current = true;
+    fitToViewport();
+    setLayoutReady(true);
+  }, [prewarmed, viewport.w, viewport.h, fitToViewport]);
 
   const zoomAt = useCallback(
     (factor: number, cx: number, cy: number) => {
@@ -327,7 +343,7 @@ export function GraphView({ onNavigate }: Props) {
       w: maxX - minX + pad * 2,
       h: maxY - minY + pad * 2,
     };
-  }, [data, hoverNode]); // re-compute when data changes; hoverNode is a cheap rerender trigger
+  }, [data, layoutReady, hoverNode]); // recompute once settled positions exist (layoutReady), and on data changes
 
   const miniScale = Math.min(MINI_W / bboxRef.w, MINI_H / bboxRef.h);
   const miniOx = (MINI_W - bboxRef.w * miniScale) / 2 - bboxRef.x * miniScale;
@@ -469,7 +485,7 @@ export function GraphView({ onNavigate }: Props) {
 
       <div
         ref={canvasRef}
-        className="graph-canvas"
+        className={`graph-canvas${layoutReady ? ' is-ready' : ''}`}
         onWheel={handleWheel}
         onPointerDown={onCanvasPointerDown}
         onPointerMove={onPointerMove}
@@ -479,7 +495,7 @@ export function GraphView({ onNavigate }: Props) {
       >
         <svg className="graph-svg">
           <g transform={`translate(${pan.x} ${pan.y}) scale(${zoom})`}>
-            {links.map((e, i) => {
+            {layoutReady && links.map((e, i) => {
               const a = e.source as SimNode;
               const b = e.target as SimNode;
               if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return null;
@@ -504,7 +520,7 @@ export function GraphView({ onNavigate }: Props) {
                 />
               );
             })}
-            {nodes.map((n) => {
+            {layoutReady && nodes.map((n) => {
               if (hiddenKinds.has(n.kind)) return null;
               const dim = isNodeDimmed(n);
               const active = hoverNode === n.id;
@@ -530,7 +546,7 @@ export function GraphView({ onNavigate }: Props) {
         </svg>
 
         <div className="graph-labels">
-          {nodes.map((n) => {
+          {layoutReady && nodes.map((n) => {
             if (hiddenKinds.has(n.kind)) return null;
             const active = hoverNode === n.id;
             const matches = !!searchLC && n.title.toLowerCase().includes(searchLC);
@@ -607,7 +623,7 @@ export function GraphView({ onNavigate }: Props) {
           onPointerUp={onPointerUp}
         >
           <rect x={0} y={0} width={MINI_W} height={MINI_H} className="graph-minimap-bg" />
-          {links.map((e, i) => {
+          {layoutReady && links.map((e, i) => {
             const a = e.source as SimNode;
             const b = e.target as SimNode;
             if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return null;
@@ -616,12 +632,12 @@ export function GraphView({ onNavigate }: Props) {
             const pB = worldToMini(b.x ?? 0, b.y ?? 0);
             return <line key={i} x1={pA.x} y1={pA.y} x2={pB.x} y2={pB.y} className="graph-minimap-edge" />;
           })}
-          {nodes.map((n) => {
+          {layoutReady && nodes.map((n) => {
             if (hiddenKinds.has(n.kind)) return null;
             const p = worldToMini(n.x ?? 0, n.y ?? 0);
             return <circle key={n.id} cx={p.x} cy={p.y} r={Math.max(1.2, n.size * miniScale / 2)} fill={n.color} />;
           })}
-          {(() => {
+          {layoutReady && (() => {
             const x1 = (-pan.x) / zoom;
             const y1 = (-pan.y) / zoom;
             const w = viewport.w / zoom;
