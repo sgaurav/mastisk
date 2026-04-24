@@ -19,12 +19,25 @@ def feed(limit: int = 50):
         return {"feed": q.recent_feed(conn, limit=limit), "agents": _agents_snapshot(conn)}
 
 
+# ``load_cap`` is the denominator in the "how busy is this lane" calculation.
+# For daily-budgeted agents (scout/listener/compiler/linter/synthesizer) we
+# override it at runtime with the user's configured budget. For agents that
+# aren't daily-budgeted (notetaker, github_*, blog_writer, roundtable,
+# escalator, artifact-agent), the fallback here is used directly so the bar
+# shows a sensible fill instead of spiking to 100% on a single job.
 _AGENT_CATALOG: list[dict] = [
-    {"id": "scout",       "name": "Scout",       "role": "Crawls feeds, blogs, RSS",                 "color": "amber",   "implemented": True},
-    {"id": "listener",    "name": "Listener",    "role": "Transcribes podcasts + YouTube",           "color": "violet",  "implemented": True},
-    {"id": "compiler",    "name": "Compiler",    "role": "Compiles raw → wiki, builds backlinks",    "color": "emerald", "implemented": True},
-    {"id": "linter",      "name": "Linter",      "role": "Health checks, broken links, orphans",     "color": "blue",    "implemented": True},
-    {"id": "synthesizer", "name": "Synthesizer", "role": "Cross-source synthesis, themes",           "color": "rose",    "implemented": True},
+    {"id": "scout",          "name": "Scout",          "role": "Crawls feeds, blogs, RSS",                  "color": "amber",   "implemented": True, "load_cap": 500},
+    {"id": "listener",       "name": "Listener",       "role": "Transcribes podcasts + YouTube",            "color": "violet",  "implemented": True, "load_cap": 20},
+    {"id": "compiler",       "name": "Compiler",       "role": "Compiles raw → wiki, builds backlinks",     "color": "emerald", "implemented": True, "load_cap": 100},
+    {"id": "linter",         "name": "Linter",         "role": "Health checks, broken links, orphans",      "color": "blue",    "implemented": True, "load_cap": 50},
+    {"id": "synthesizer",    "name": "Synthesizer",    "role": "Cross-source synthesis, themes",            "color": "rose",    "implemented": True, "load_cap": 10},
+    {"id": "notetaker",      "name": "Notetaker",      "role": "Classifies inbox notes, writes summaries",  "color": "blue",    "implemented": True, "load_cap": 20},
+    {"id": "escalator",      "name": "Escalator",      "role": "Promotes strong notes into wiki articles",  "color": "amber",   "implemented": True, "load_cap": 10},
+    {"id": "artifact-agent", "name": "Artifacts",      "role": "Renders charts, tables, inline visuals",    "color": "rose",    "implemented": True, "load_cap": 10},
+    {"id": "github_poller",  "name": "GitHub Poller",  "role": "Polls GitHub + local repos, builds context","color": "violet",  "implemented": True, "load_cap": 5},
+    {"id": "github_ideator", "name": "GitHub Ideator", "role": "Generates research ideas from repo context","color": "rose",    "implemented": True, "load_cap": 5},
+    {"id": "blog_writer",    "name": "Blog Writer",    "role": "Drafts blog posts from recent activity",    "color": "emerald", "implemented": True, "load_cap": 5},
+    {"id": "roundtable",     "name": "Roundtable",     "role": "Runs multi-LLM perspectives on a prompt",   "color": "amber",   "implemented": True, "load_cap": 5},
 ]
 
 
@@ -33,18 +46,21 @@ def _agents_snapshot(conn) -> list[dict]:
 
     - status: 'active' if any job is running OR a feed row was emitted in the
       last 2 minutes; 'idle' otherwise; 'disabled' for agents without code.
-    - load: queued-job depth / daily-budget cap, clamped to [0, 1]. Gives a
-      rough "how busy is this lane" signal without fake numbers.
+    - load: queued-job depth / load_cap, clamped to [0, 1]. For daily-budgeted
+      agents the cap is the user's configured daily budget; for the rest it's
+      the catalog's load_cap fallback.
     """
     from mastisk.settings import get_settings
 
     s = get_settings()
-    budget = {
-        "scout": max(1, s.budget.scout),
-        "listener": max(1, s.budget.listener),
-        "compiler": max(1, s.budget.compiler),
-        "linter": max(1, s.budget.linter),
-        "synthesizer": max(1, s.budget.synthesizer),
+    # Daily-budget overrides for the five core agents. Other agents keep the
+    # static load_cap from the catalog.
+    budget_overrides = {
+        "scout":       s.budget.scout,
+        "listener":    s.budget.listener,
+        "compiler":    s.budget.compiler,
+        "linter":      s.budget.linter,
+        "synthesizer": s.budget.synthesizer,
     }
 
     job_counts = {
@@ -67,7 +83,8 @@ def _agents_snapshot(conn) -> list[dict]:
         counts = job_counts.get(a["id"], {"queued": 0, "running": 0})
         queued = counts["queued"] or 0
         running = counts["running"] or 0
-        load = min(1.0, (queued + running) / budget[a["id"]])
+        cap = max(1, budget_overrides.get(a["id"], a.get("load_cap", 10)))
+        load = min(1.0, (queued + running) / cap)
 
         if not a["implemented"]:
             status = "disabled"

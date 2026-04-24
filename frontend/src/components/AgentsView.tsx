@@ -9,8 +9,8 @@ export function AgentsView({ agents, feed }: Props) {
   return (
     <div className="view">
       <div className="view-h">System · Agents</div>
-      <h1 className="view-title">Five agents, always on.</h1>
-      <p className="view-sub">Your agents read, transcribe, summarize, and connect 24/7. Each is a narrow specialist that hands off to the next. Together they maintain a wiki you almost never need to edit.</p>
+      <h1 className="view-title">Your agents, always on.</h1>
+      <p className="view-sub">Each agent is a narrow specialist that hands off to the next. They read, transcribe, summarize, connect, classify, escalate, and generate — together maintaining a wiki you almost never need to edit.</p>
 
       <div className="agent-grid">
         {agents.map((a) => (
