@@ -992,7 +992,7 @@ a { color: inherit; }
   border-radius: 0;
   touch-action: none;
 }
-.graph-svg { position: absolute; inset: 0; display: block; }
+.graph-svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .graph-labels { position: absolute; inset: 0; pointer-events: none; }
 .graph-label {
   position: absolute;

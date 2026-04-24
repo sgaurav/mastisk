@@ -477,7 +477,7 @@ export function GraphView({ onNavigate }: Props) {
         onPointerCancel={onPointerUp}
         style={{ cursor: dragRef.current?.mode === 'pan' ? 'grabbing' : 'grab' }}
       >
-        <svg className="graph-svg" width={viewport.w} height={viewport.h}>
+        <svg className="graph-svg">
           <g transform={`translate(${pan.x} ${pan.y}) scale(${zoom})`}>
             {links.map((e, i) => {
               const a = e.source as SimNode;
