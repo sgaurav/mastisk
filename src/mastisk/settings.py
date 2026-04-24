@@ -41,7 +41,10 @@ class NotesSettings(BaseSettings):
     dedup_similarity_threshold: float = 0.85
     claude_retry_count: int = 2
     claude_retry_backoff_mins: list[int] = Field(default_factory=lambda: [30, 60])
-    notetaker_model: str = "llama3.1:8b"
+    # When unset, the notetaker falls back to top-level summarize_model_cheap
+    # (which the Settings UI actually exposes). The old "llama3.1:8b" hardcode
+    # silently broke classify for anyone who hadn't pulled that specific model.
+    notetaker_model: str | None = None
     escalator_model: str = "claude-sonnet-4-6"
     notetaker_concurrency: int = 4
 

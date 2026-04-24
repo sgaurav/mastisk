@@ -282,8 +282,12 @@ class Notetaker(Agent):
             body=body_core,
         )
 
-        settings = get_settings().notes
-        result = await ollama_bridge.run_ollama(prompt, settings.notetaker_model)
+        top_settings = get_settings()
+        # Fall back to summarize_model_cheap (exposed in the Settings UI) when
+        # notes.notetaker_model is unset — avoids pinning to a model the user
+        # may not have pulled.
+        model = top_settings.notes.notetaker_model or top_settings.summarize_model_cheap
+        result = await ollama_bridge.run_ollama(prompt, model)
         raw_text = result.get("text", "") if isinstance(result, dict) else str(result)
         parsed = _extract_json(raw_text)
 
