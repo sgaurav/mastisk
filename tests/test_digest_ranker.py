@@ -11,6 +11,7 @@ from datetime import date, timedelta
 
 import pytest
 
+from mastisk.routes.digest_route import _latest_feedback
 from mastisk.services import digest_ranker, user_profile
 
 
@@ -198,3 +199,59 @@ class TestFeedbackShiftsDigest:
         t2 = next(c for c in top if c.article_id == "T2")
         assert t1.interest > t2.interest
         assert t1.final > t2.final
+
+
+class TestFeedbackReadback:
+    """_latest_feedback correctly reads vote + clear markers, regardless of order."""
+
+    def _like(self, conn, aid, d):
+        conn.execute(
+            """INSERT INTO signals (article_id, kind, value_json)
+               VALUES (?, 'liked', json_object('digest_date', ?))""",
+            (aid, d),
+        )
+
+    def _dislike(self, conn, aid, d):
+        conn.execute(
+            """INSERT INTO signals (article_id, kind, value_json)
+               VALUES (?, 'disliked', json_object('digest_date', ?))""",
+            (aid, d),
+        )
+
+    def _clear(self, conn, aid, d):
+        conn.execute(
+            """INSERT INTO signals (article_id, kind, value_json)
+               VALUES (?, 'edited', json_object('from', 'feedback', 'digest_date', ?, 'verdict', 'clear'))""",
+            (aid, d),
+        )
+
+    def test_no_signals_returns_none(self, conn):
+        _insert_article(conn, id="A1", title="t")
+        assert _latest_feedback(conn, "A1", "2026-04-24") is None
+
+    def test_liked_then_clear_reads_as_none(self, conn):
+        """The bug fix: a toggle-off clear marker must override the prior like."""
+        _insert_article(conn, id="A1", title="t")
+        self._like(conn, "A1", "2026-04-24")
+        self._clear(conn, "A1", "2026-04-24")
+        assert _latest_feedback(conn, "A1", "2026-04-24") is None
+
+    def test_clear_then_like_reads_as_yes(self, conn):
+        """User changes their mind back — latest wins."""
+        _insert_article(conn, id="A1", title="t")
+        self._clear(conn, "A1", "2026-04-24")
+        self._like(conn, "A1", "2026-04-24")
+        assert _latest_feedback(conn, "A1", "2026-04-24") == "yes"
+
+    def test_feedback_scoped_to_digest_date(self, conn):
+        """A like on yesterday's digest shouldn't leak into today's read."""
+        _insert_article(conn, id="A1", title="t")
+        self._like(conn, "A1", "2026-04-23")
+        assert _latest_feedback(conn, "A1", "2026-04-24") is None
+        assert _latest_feedback(conn, "A1", "2026-04-23") == "yes"
+
+    def test_flip_yes_to_no(self, conn):
+        _insert_article(conn, id="A1", title="t")
+        self._like(conn, "A1", "2026-04-24")
+        self._dislike(conn, "A1", "2026-04-24")
+        assert _latest_feedback(conn, "A1", "2026-04-24") == "no"

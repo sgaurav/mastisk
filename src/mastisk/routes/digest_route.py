@@ -33,18 +33,29 @@ def _parse_date(s: str | None) -> _date:
 def _latest_feedback(conn, article_id: str, digest_date: str) -> str | None:
     """'yes' | 'no' | None for the most recent vote this user cast on the article
     within the context of this digest. We scope to the digest_date so the audit
-    view can attribute feedback to the day it was shown."""
+    view can attribute feedback to the day it was shown.
+
+    The frontend lets users toggle a vote off (click the active thumb again),
+    which inserts a `kind='edited'` clear marker. We consider *all three* signal
+    kinds here and take the most recent — if it's the clear marker, feedback
+    is None.
+    """
     row = conn.execute(
         """SELECT kind FROM signals
            WHERE article_id = ?
-             AND kind IN ('liked', 'disliked')
              AND json_extract(value_json, '$.digest_date') = ?
-           ORDER BY ts DESC LIMIT 1""",
+             AND (kind IN ('liked', 'disliked')
+                  OR (kind = 'edited' AND json_extract(value_json, '$.from') = 'feedback'))
+           ORDER BY ts DESC, id DESC LIMIT 1""",
         (article_id, digest_date),
     ).fetchone()
     if not row:
         return None
-    return "yes" if row["kind"] == "liked" else "no"
+    if row["kind"] == "liked":
+        return "yes"
+    if row["kind"] == "disliked":
+        return "no"
+    return None  # cleared
 
 
 @router.get("/digest")
@@ -220,21 +231,37 @@ def audit(date: str | None = None, window_days: int = 1):
             (start, end),
         ).fetchall()
 
-        # Batch-fetch latest feedback per (article, date).
+        # Batch-fetch latest feedback per (article, date). Include the 'edited'
+        # clear marker so a toggled-off vote correctly reads as no feedback.
+        # Use ROW_NUMBER with `ts DESC, id DESC` so ties on ts resolve to the
+        # most recently-inserted row (id is AUTOINCREMENT), matching the
+        # single-row query in _latest_feedback.
         fb_rows = conn.execute(
-            """SELECT article_id, kind,
-                      json_extract(value_json, '$.digest_date') AS digest_date,
-                      MAX(ts) AS ts
-               FROM signals
-               WHERE kind IN ('liked', 'disliked')
-                 AND json_extract(value_json, '$.digest_date') BETWEEN ? AND ?
-               GROUP BY article_id, digest_date""",
+            """WITH ranked AS (
+                   SELECT article_id, kind,
+                          json_extract(value_json, '$.digest_date') AS digest_date,
+                          ROW_NUMBER() OVER (
+                              PARTITION BY article_id, json_extract(value_json, '$.digest_date')
+                              ORDER BY ts DESC, id DESC
+                          ) AS rn
+                   FROM signals
+                   WHERE json_extract(value_json, '$.digest_date') BETWEEN ? AND ?
+                     AND (kind IN ('liked', 'disliked')
+                          OR (kind = 'edited'
+                              AND json_extract(value_json, '$.from') = 'feedback'))
+               )
+               SELECT article_id, kind, digest_date FROM ranked WHERE rn = 1""",
             (start, end),
         ).fetchall()
-        fb_by_key: dict[tuple[str, str], str] = {
-            (r["article_id"], r["digest_date"]): ("yes" if r["kind"] == "liked" else "no")
-            for r in fb_rows
-        }
+        fb_by_key: dict[tuple[str, str], str | None] = {}
+        for r in fb_rows:
+            if r["kind"] == "liked":
+                v: str | None = "yes"
+            elif r["kind"] == "disliked":
+                v = "no"
+            else:
+                v = None  # cleared
+            fb_by_key[(r["article_id"], r["digest_date"])] = v
 
         by_date: dict[str, list[dict]] = {}
         for r in cand_rows:
