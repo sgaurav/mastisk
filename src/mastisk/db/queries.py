@@ -116,6 +116,24 @@ def get_article(conn: sqlite3.Connection, article_id: str) -> dict | None:
             (article_id,),
         )
     ]
+    # Inbound links — other articles that reference this one. Snippet may be
+    # empty when the row was inserted by the linter's graph-repair pass, which
+    # doesn't have access to the quoted context.
+    d["backlinkList"] = [
+        {
+            "id": r["from_article"],
+            "title": r["title"],
+            "snippet": r["snippet"] or "",
+            "weight": r["weight"],
+        }
+        for r in conn.execute(
+            """SELECT links.from_article, links.weight, links.snippet, articles.title
+               FROM links JOIN articles ON articles.id = links.from_article
+               WHERE links.to_article = ?
+               ORDER BY links.weight DESC, articles.updated_at DESC LIMIT 20""",
+            (article_id,),
+        )
+    ]
     d["sourceList"] = [
         dict(r)
         for r in conn.execute(

@@ -41,15 +41,24 @@ export function RightRail({ article, feed, agents, onNavigate }: Props) {
 
       <div className="rail-section">
         <div className="rail-h">Backlinks <span className="count">{article.backlinks}</span></div>
-        {[
-          { t: 'RL + LLMs', s: '…the strongest empirical case for [[Test-time compute]] is the o-series…' },
-          { t: 'Process reward models', s: '…PRMs let you prune the search tree during [[Test-time compute]]…' },
-        ].map((b, i) => (
-          <div key={i} className="backlink">
-            <div className="bl-title">{b.t}</div>
-            <div className="bl-snip">{b.s}</div>
+        {!article.backlinkList || article.backlinkList.length === 0 ? (
+          <div style={{ fontSize: 12, color: 'var(--fg-faint)', lineHeight: 1.5 }}>
+            No inbound links yet. When other pages reference this one, they'll appear here.
           </div>
-        ))}
+        ) : (
+          article.backlinkList.map((b) => (
+            <div
+              key={b.id}
+              className="backlink"
+              onClick={() => onNavigate('article', b.id)}
+              style={{ cursor: 'pointer' }}
+              title={b.title}
+            >
+              <div className="bl-title">{b.title}</div>
+              {b.snippet && <div className="bl-snip">{b.snippet}</div>}
+            </div>
+          ))
+        )}
       </div>
 
       <div className="rail-section">

@@ -13,6 +13,13 @@ export interface RelatedLink {
   weight: number;
 }
 
+export interface BacklinkRow {
+  id: string;
+  title: string;
+  snippet: string;
+  weight: number;
+}
+
 export interface SourceRow {
   kind: string;
   title: string;
@@ -45,6 +52,7 @@ export interface Article {
   forwardlinks: number;
   sections: ArticleSection[];
   related: RelatedLink[];
+  backlinkList: BacklinkRow[];
   sourceList: SourceRow[];
   updated_by: string;
   updated_at: string;
