@@ -189,6 +189,23 @@ async def ideate_now_by_slug_endpoint(slug: str) -> dict:
     return {"ok": True}
 
 
+@router.get("/ideas/{slug:path}")
+async def list_ideas_for_repo_endpoint(slug: str) -> dict:
+    """Return notes produced by the GithubIdeator for this repo, plus the
+    most recent ideation runs (with errors surfaced) for visibility.
+
+    Same verb-root /ideas/ path convention as /poll/ and /ideate/ — keeps
+    local-repo slugs (which contain slashes) from fighting the router.
+    """
+    with connect() as conn:
+        r = q.get_repo(conn, slug)
+        if r is None or r.get("deleted_at") is not None:
+            raise HTTPException(status_code=404, detail="repo not found")
+        ideas = q.list_ideas_for_repo(conn, slug)
+        runs = q.list_recent_idea_runs(conn, slug)
+    return {"ideas": ideas, "runs": runs}
+
+
 # ─── Filesystem browser — used by the Add Repo modal's folder picker ─────
 
 

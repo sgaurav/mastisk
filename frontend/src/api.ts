@@ -2,7 +2,7 @@ import type {
   Article, ArticlePreview, Artifact, ArtifactKind, AskResponse, BlogPostDetail,
   BlogPostSummary, Digest, DigestAudit, Feed,
   FeedTick, AgentInfo, GraphData, Job, Note, OpenQuestionsResponse, PendingSynthesisResponse,
-  PinnedItem, RepoDetail, RepoSummary, Roundtable, RoundtableSummary, SettingsBundle, SettingsPatch,
+  PinnedItem, RepoDetail, RepoIdeasResponse, RepoSummary, Roundtable, RoundtableSummary, SettingsBundle, SettingsPatch,
   SynthesisRunResponse, UserInfo, VaultItem,
 } from './types';
 
@@ -418,6 +418,12 @@ export const api = {
     ideateNow: (slug: string): Promise<void> =>
       fetch(`/api/repos/ideate/${slug}`, { method: 'POST' }).then(r => {
         if (!r.ok) throw new Error(`${r.status}`);
+      }),
+
+    ideas: (slug: string): Promise<RepoIdeasResponse> =>
+      fetch(`/api/repos/ideas/${slug}`).then(r => {
+        if (!r.ok) throw new Error(`${r.status}`);
+        return r.json();
       }),
 
     browse: (path?: string): Promise<{

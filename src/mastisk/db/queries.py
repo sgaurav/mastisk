@@ -1301,6 +1301,50 @@ def mark_repo_ideated(conn: sqlite3.Connection, *, slug: str, ideated_at: str) -
     )
 
 
+def list_ideas_for_repo(
+    conn: sqlite3.Connection, slug: str, *, limit: int = 50
+) -> list[dict]:
+    """Return notes produced by the GithubIdeator for this repo.
+
+    Joins ``repo_idea_runs.note_ids_json`` (a JSON array of note ids) against
+    the ``notes`` table via ``json_each``. Excludes tombstoned notes; newest
+    first. Same join pattern used by the blog-writer's recent-ideas gather.
+    """
+    return [dict(r) for r in conn.execute(
+        """SELECT n.id, n.slug, n.summary, n.classification, n.confidence,
+                  n.created_at, n.classified_at
+           FROM repo_idea_runs r
+           JOIN json_each(r.note_ids_json) je
+           JOIN notes n ON n.id = CAST(je.value AS INTEGER)
+           WHERE r.repo_slug = ?
+             AND json_valid(r.note_ids_json)
+             AND n.deleted_at IS NULL
+           ORDER BY n.created_at DESC, n.id DESC
+           LIMIT ?""",
+        (slug, limit),
+    )]
+
+
+def list_recent_idea_runs(
+    conn: sqlite3.Connection, slug: str, *, limit: int = 5
+) -> list[dict]:
+    """Return recent ideation runs for this repo for UI visibility.
+
+    Each row includes ``ideas_count`` (array length of ``note_ids_json``) so
+    the UI can show ``3 ideas`` etc. without a second query per run.
+    """
+    return [dict(r) for r in conn.execute(
+        """SELECT id, ideated_at, model, error,
+                  CASE WHEN json_valid(note_ids_json)
+                       THEN json_array_length(note_ids_json) ELSE 0 END AS ideas_count
+           FROM repo_idea_runs
+           WHERE repo_slug = ?
+           ORDER BY ideated_at DESC
+           LIMIT ?""",
+        (slug, limit),
+    )]
+
+
 # ─────────────────────────────── Blog posts ───────────────────────────────
 # See docs/superpowers/specs/2026-04-22-blog-writer-design.md §§10-11.
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
-import type { RepoDetail, View } from '../types';
+import type { RepoDetail, RepoIdeasResponse, View } from '../types';
 
 interface Props {
   slug: string;
@@ -9,14 +9,19 @@ interface Props {
 
 export function RepoDetailView({ slug, onNavigate }: Props) {
   const [repo, setRepo] = useState<RepoDetail | null>(null);
+  const [ideas, setIdeas] = useState<RepoIdeasResponse | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setRepo(null);
+    setIdeas(null);
     api.repos.get(slug)
       .then(setRepo)
       .catch((e) => setErr(e instanceof Error ? e.message : 'failed'));
+    api.repos.ideas(slug)
+      .then(setIdeas)
+      .catch(() => { /* non-fatal — detail view still renders */ });
   }, [slug]);
   useEffect(load, [load]);
 
@@ -85,6 +90,8 @@ export function RepoDetailView({ slug, onNavigate }: Props) {
         )}
       </section>
 
+      <IdeasSection ideas={ideas} onNavigate={onNavigate} />
+
       <div style={{ marginTop: 16, display: 'flex', gap: 8 }}>
         <button onClick={() => onNavigate('repos')}>← all repos</button>
         <button onClick={onPoll} disabled={busy === 'poll'}>
@@ -96,5 +103,99 @@ export function RepoDetailView({ slug, onNavigate }: Props) {
         <button onClick={onDelete} style={{ marginLeft: 'auto' }}>remove</button>
       </div>
     </div>
+  );
+}
+
+function IdeasSection({
+  ideas,
+  onNavigate,
+}: {
+  ideas: RepoIdeasResponse | null;
+  onNavigate: (view: View, id?: string) => void;
+}) {
+  const heading = (
+    <h3 style={{ fontSize: 13, color: 'var(--fg-faint)', marginBottom: 8, fontFamily: 'var(--mono)' }}>
+      Ideas from this repo{ideas && ` · ${ideas.ideas.length}`}
+    </h3>
+  );
+
+  if (!ideas) {
+    return (
+      <section style={{ marginTop: 24 }}>
+        {heading}
+        <p style={{ color: 'var(--fg-faint)', fontSize: 12, fontFamily: 'var(--mono)' }}>loading…</p>
+      </section>
+    );
+  }
+
+  // Surface the most recent failed ideation run — otherwise errors are silent.
+  const lastFailed = ideas.runs.find((r) => r.error);
+
+  return (
+    <section style={{ marginTop: 24 }}>
+      {heading}
+
+      {lastFailed && (
+        <div style={{
+          fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--danger, crimson)',
+          border: '1px solid var(--danger, crimson)', borderRadius: 6,
+          padding: '6px 10px', marginBottom: 10,
+        }}>
+          last run errored @ {new Date(lastFailed.ideated_at).toLocaleString()}: {lastFailed.error}
+        </div>
+      )}
+
+      {ideas.ideas.length === 0 ? (
+        <p style={{ color: 'var(--fg-faint)', fontSize: 12, lineHeight: 1.5 }}>
+          No ideas yet. Ideas are generated from the rolling context on each ideation run and
+          flow through the Notetaker — hit "ideate now" to trigger one immediately, or wait for
+          the scheduled run.
+        </p>
+      ) : (
+        <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {ideas.ideas.map((n) => (
+            <li key={n.id}>
+              <a
+                href={`/notes/${n.id}`}
+                onClick={(e) => { e.preventDefault(); onNavigate('note', String(n.id)); }}
+                style={{
+                  display: 'flex', alignItems: 'baseline', gap: 10,
+                  fontSize: 13, lineHeight: 1.5, color: 'var(--fg)',
+                  textDecoration: 'none',
+                  padding: '6px 0', borderBottom: '1px solid var(--line-soft)',
+                }}
+              >
+                <span style={{
+                  fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--fg-faint)',
+                  minWidth: 60, textAlign: 'right',
+                }}>
+                  {new Date(n.created_at).toLocaleDateString()}
+                </span>
+                {n.classification && (
+                  <span style={{
+                    fontFamily: 'var(--mono)', fontSize: 10,
+                    color: 'var(--fg-mute)', textTransform: 'lowercase',
+                    border: '1px solid var(--line-soft)', borderRadius: 4,
+                    padding: '0 4px',
+                  }}>
+                    {n.classification}
+                  </span>
+                )}
+                <span style={{ flex: 1 }}>{n.summary ?? n.slug}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {ideas.runs.length > 0 && (
+        <div style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--fg-faint)', marginTop: 8 }}>
+          {ideas.runs.length} run{ideas.runs.length === 1 ? '' : 's'} tracked
+          {' · '}
+          last: {new Date(ideas.runs[0].ideated_at).toLocaleString()}
+          {ideas.runs[0].model && ` · model=${ideas.runs[0].model}`}
+        </div>
+      )}
+    </section>
   );
 }

@@ -391,6 +391,29 @@ export interface RepoDetail {
   latest_snapshot: Record<string, unknown> | null;
 }
 
+export interface RepoIdea {
+  id: number;
+  slug: string;
+  summary: string | null;
+  classification: string | null;
+  confidence: number | null;
+  created_at: string;
+  classified_at: string | null;
+}
+
+export interface RepoIdeaRun {
+  id: number;
+  ideated_at: string;
+  model: string | null;
+  error: string | null;
+  ideas_count: number;
+}
+
+export interface RepoIdeasResponse {
+  ideas: RepoIdea[];
+  runs: RepoIdeaRun[];
+}
+
 export interface BudgetValues {
   scout: number;
   listener: number;
