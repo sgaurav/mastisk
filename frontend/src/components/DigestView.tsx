@@ -1,4 +1,6 @@
-import type { Digest, View } from '../types';
+import { useState } from 'react';
+import { api } from '../api';
+import type { Digest, DigestThread, View } from '../types';
 
 interface Props {
   digest: Digest;
@@ -10,12 +12,10 @@ export function DigestView({ digest, onNavigate, onAsk }: Props) {
   const empty = digest.counters.every((c) => c.value === 0);
   const hasNav = digest.prev_date || digest.next_date;
 
-  // Completely empty wiki (no prev/next to jump to either) → show the onboarding splash.
   if (empty && digest.threads.length === 0 && !hasNav) {
     return <EmptyDigest onAsk={onAsk} />;
   }
 
-  // Non-today date with zero activity, but we have neighbours to jump to.
   if (empty && digest.threads.length === 0) {
     return (
       <div className="view">
@@ -41,20 +41,32 @@ export function DigestView({ digest, onNavigate, onAsk }: Props) {
         ))}
       </div>
 
-      <div style={{fontFamily:'var(--mono)',fontSize:10,textTransform:'uppercase',letterSpacing:'0.08em',color:'var(--fg-faint)',marginBottom:4}}>Threads</div>
+      <div
+        style={{
+          display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+          marginBottom: 4, gap: 16,
+        }}
+      >
+        <div style={{fontFamily:'var(--mono)',fontSize:10,textTransform:'uppercase',letterSpacing:'0.08em',color:'var(--fg-faint)'}}>Threads</div>
+        <button
+          type="button"
+          className="digest-audit-link"
+          onClick={() => onNavigate('digest_audit', digest.iso_date)}
+          title="See what was considered and why"
+        >
+          audit ranker →
+        </button>
+      </div>
 
       {digest.threads.map((t, i) => (
-        <div key={i} className="thread">
-          <div className="thread-meta">
-            <span>thread #{i+1}</span>
-            <span>{t.sources} sources</span>
-          </div>
-          <h2 className="thread-title" onClick={() => t.article_id && onNavigate('article', t.article_id)}>{t.title}</h2>
-          <p className="thread-body" dangerouslySetInnerHTML={{ __html: t.body }}/>
-          <div className="thread-links">
-            {t.links.map((l) => <span key={l} className="chip" onClick={() => onAsk(`Tell me about ${l}`, l)}>{l}</span>)}
-          </div>
-        </div>
+        <ThreadCard
+          key={t.article_id ?? i}
+          index={i}
+          thread={t}
+          digestDate={digest.iso_date}
+          onNavigate={onNavigate}
+          onAsk={onAsk}
+        />
       ))}
 
       <div className="queue-block">
@@ -64,6 +76,83 @@ export function DigestView({ digest, onNavigate, onAsk }: Props) {
             <div className="q-status"/>
             <span>{q}</span>
           </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ThreadCard({
+  index, thread, digestDate, onNavigate, onAsk,
+}: {
+  index: number;
+  thread: DigestThread;
+  digestDate: string;
+  onNavigate: Props['onNavigate'];
+  onAsk: Props['onAsk'];
+}) {
+  const [verdict, setVerdict] = useState<'yes' | 'no' | null>(thread.feedback ?? null);
+  const [busy, setBusy] = useState(false);
+
+  async function vote(next: 'yes' | 'no') {
+    if (busy || !thread.article_id) return;
+    setBusy(true);
+    const optimistic = verdict === next ? 'clear' : next;
+    const prior = verdict;
+    setVerdict(optimistic === 'clear' ? null : next);
+    try {
+      await api.digestFeedback(thread.article_id, optimistic, digestDate);
+    } catch {
+      setVerdict(prior);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const scores = thread.scores;
+  return (
+    <div className="thread">
+      <div className="thread-meta">
+        <span>thread #{index + 1}</span>
+        <span>{thread.sources} sources</span>
+        {scores && (
+          <span className="thread-scores" title={`quality ${scores.quality} · interest ${scores.interest} · final ${scores.final}`}>
+            q {scores.quality.toFixed(2)} · i {scores.interest.toFixed(2)}
+          </span>
+        )}
+        <span className="thread-feedback">
+          <button
+            type="button"
+            className={`thumb${verdict === 'yes' ? ' is-on' : ''}`}
+            onClick={() => vote('yes')}
+            disabled={busy || !thread.article_id}
+            aria-pressed={verdict === 'yes'}
+            title="Show me more like this"
+          >
+            👍
+          </button>
+          <button
+            type="button"
+            className={`thumb${verdict === 'no' ? ' is-on' : ''}`}
+            onClick={() => vote('no')}
+            disabled={busy || !thread.article_id}
+            aria-pressed={verdict === 'no'}
+            title="Less like this"
+          >
+            👎
+          </button>
+        </span>
+      </div>
+      <h2
+        className="thread-title"
+        onClick={() => thread.article_id && onNavigate('article', thread.article_id)}
+      >
+        {thread.title}
+      </h2>
+      <p className="thread-body" dangerouslySetInnerHTML={{ __html: thread.body }}/>
+      <div className="thread-links">
+        {thread.links.map((l) => (
+          <span key={l} className="chip" onClick={() => onAsk(`Tell me about ${l}`, l)}>{l}</span>
         ))}
       </div>
     </div>

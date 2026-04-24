@@ -12,7 +12,10 @@ from mastisk.db.queries import connect
 
 router = APIRouter(tags=["signals"])
 
-_ALLOWED = {"opened", "time_read", "pinned", "unpinned", "deleted", "edited", "asked", "skipped"}
+_ALLOWED = {
+    "opened", "time_read", "pinned", "unpinned", "deleted", "edited", "asked", "skipped",
+    "liked", "disliked",
+}
 
 
 class SignalIn(BaseModel):

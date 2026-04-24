@@ -12,6 +12,7 @@ import { ArticleView } from './components/ArticleView';
 import { RightRail } from './components/RightRail';
 import { SystemRail } from './components/SystemRail';
 import { DigestView } from './components/DigestView';
+import { DigestAuditView } from './components/DigestAuditView';
 import { AgentsView } from './components/AgentsView';
 import { GraphView } from './components/GraphView';
 import { AskDrawer } from './components/AskDrawer';
@@ -179,6 +180,7 @@ export function App() {
         {view === 'article' && !article && <Loading/>}
         {view === 'digest' && digest && <DigestView digest={digest} onNavigate={navigate} onAsk={openAsk}/>}
         {view === 'digest' && !digest && <Loading/>}
+        {view === 'digest_audit' && <DigestAuditView date={currentDate ?? undefined} onNavigate={navigate}/>}
         {(view === 'feed' || view === 'agents') && <AgentsView agents={agents} feed={mergedFeed}/>}
         {view === 'graph' && <GraphView onNavigate={navigate}/>}
         {view === 'ingest' && <IngestView/>}

@@ -15,6 +15,7 @@ const VIEW_PATHS: Record<string, View> = {
   '': 'digest',
   '/': 'digest',
   '/digest': 'digest',
+  '/digest/audit': 'digest_audit',
   '/queue': 'queue',
   '/feed': 'feed',
   '/agents': 'agents',
@@ -34,6 +35,7 @@ const VIEW_PATHS: Record<string, View> = {
 const PATH_FOR_VIEW: Record<View, string> = {
   article: '/a/',
   digest: '/',
+  digest_audit: '/digest/audit',
   queue: '/queue',
   feed: '/feed',
   agents: '/agents',
@@ -66,6 +68,13 @@ export function parseRoute(pathname: string): Route {
   if (pathname.startsWith('/a/')) {
     const raw = pathname.slice(3).split('/')[0];
     if (raw) return { ...emptyRoute('article'), articleId: decodeURIComponent(raw) };
+  }
+  if (pathname === '/digest/audit' || pathname.startsWith('/digest/audit/')) {
+    const raw = pathname.slice('/digest/audit'.length).replace(/^\//, '').split('/')[0];
+    if (raw && ISO_DATE.test(raw)) {
+      return { ...emptyRoute('digest_audit'), date: raw };
+    }
+    return emptyRoute('digest_audit');
   }
   if (pathname.startsWith('/digest/')) {
     const raw = pathname.slice('/digest/'.length).split('/')[0];
@@ -114,6 +123,7 @@ export function parseRoute(pathname: string): Route {
 export function routeToPath(view: View, arg?: string | null): string {
   if (view === 'article' && arg) return `/a/${encodeURIComponent(arg)}`;
   if (view === 'digest' && arg && ISO_DATE.test(arg)) return `/digest/${arg}`;
+  if (view === 'digest_audit' && arg && ISO_DATE.test(arg)) return `/digest/audit/${arg}`;
   if (view === 'note' && arg) return `/notes/${arg}`;
   if (view === 'roundtable' && arg) return `/roundtables/${arg}`;
   if (view === 'repo' && arg) return `/repos/${arg}`;
@@ -134,6 +144,7 @@ export function useRoute() {
     const next = emptyRoute(view);
     if (view === 'article' && arg) next.articleId = arg;
     else if (view === 'digest' && arg && ISO_DATE.test(arg)) next.date = arg;
+    else if (view === 'digest_audit' && arg && ISO_DATE.test(arg)) next.date = arg;
     else if (view === 'note' && arg) next.noteId = Number(arg);
     else if (view === 'roundtable' && arg) next.roundtableId = Number(arg);
     else if (view === 'repo' && arg) next.repoSlug = arg;

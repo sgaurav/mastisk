@@ -181,12 +181,20 @@ export interface AgentInfo {
   running: number;
 }
 
+export interface DigestThreadScores {
+  quality: number;
+  interest: number;
+  final: number;
+}
+
 export interface DigestThread {
   title: string;
   body: string;
   sources: number;
   links: string[];
   article_id?: string;
+  scores?: DigestThreadScores;
+  feedback?: 'yes' | 'no' | null;
 }
 
 export interface Digest {
@@ -198,6 +206,42 @@ export interface Digest {
   counters: { label: string; value: number }[];
   threads: DigestThread[];
   queue: string[];
+  meta?: { considered: number; selected: number; unshown: number };
+}
+
+export interface DigestAuditCandidate {
+  article_id: string;
+  title: string;
+  kind: string;
+  summary: string;
+  quality: number;
+  interest: number;
+  final: number;
+  selected: boolean;
+  rank: number | null;
+  feedback: 'yes' | 'no' | null;
+}
+
+export interface DigestAuditDay {
+  date: string;
+  candidates: DigestAuditCandidate[];
+}
+
+export interface DigestAuditRollup {
+  total_considered: number;
+  total_shown: number;
+  liked: number;
+  disliked: number;
+  unrated: number;
+  hit_rate: number;
+}
+
+export interface DigestAudit {
+  start: string;
+  end: string;
+  window_days: number;
+  days: DigestAuditDay[];
+  rollup: DigestAuditRollup;
 }
 
 export interface OpenQuestion {
@@ -249,7 +293,7 @@ export interface Roundtable extends RoundtableSummary {
 }
 
 export type View =
-  | 'article' | 'digest' | 'feed' | 'agents'
+  | 'article' | 'digest' | 'digest_audit' | 'feed' | 'agents'
   | 'graph' | 'mobile' | 'queue' | 'ingest' | 'lint' | 'settings'
   | 'open_questions'
   | 'notes' | 'note'

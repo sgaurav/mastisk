@@ -316,6 +316,28 @@ CREATE TABLE IF NOT EXISTS roundtable_perspectives (
 
 CREATE INDEX IF NOT EXISTS idx_roundtable_perspectives_rt ON roundtable_perspectives(roundtable_id);
 
+-- ─────────────────────────────── Digest ranking ───────────────────────────────
+-- Every article considered for a given daily digest is logged here with its
+-- quality_score, interest_score, final_score, and whether it was selected.
+-- This lets the digest UI explain "why did X show up today?" and lets us
+-- audit the ranker's picks against user feedback (signals kind='liked'|'disliked')
+-- after a week of use.
+
+CREATE TABLE IF NOT EXISTS digest_candidates (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  digest_date     TEXT NOT NULL,                 -- ISO YYYY-MM-DD
+  article_id      TEXT NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+  quality_score   REAL NOT NULL,
+  interest_score  REAL NOT NULL,
+  final_score     REAL NOT NULL,
+  selected        INTEGER NOT NULL DEFAULT 0,     -- 1 if it made the digest
+  rank            INTEGER,                        -- 1-indexed within that digest, NULL if not selected
+  computed_at     DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(digest_date, article_id)
+);
+CREATE INDEX IF NOT EXISTS idx_digest_candidates_date ON digest_candidates(digest_date DESC);
+CREATE INDEX IF NOT EXISTS idx_digest_candidates_article ON digest_candidates(article_id);
+
 -- ─────────────────────────────── GitHub ───────────────────────────────
 
 CREATE TABLE IF NOT EXISTS repos (

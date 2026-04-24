@@ -1,6 +1,6 @@
 import type {
   Article, ArticlePreview, Artifact, ArtifactKind, AskResponse, BlogPostDetail,
-  BlogPostSummary, Digest, Feed,
+  BlogPostSummary, Digest, DigestAudit, Feed,
   FeedTick, AgentInfo, GraphData, Job, Note, OpenQuestionsResponse, PendingSynthesisResponse,
   PinnedItem, RepoDetail, RepoSummary, Roundtable, RoundtableSummary, SettingsBundle, SettingsPatch,
   SynthesisRunResponse, UserInfo, VaultItem,
@@ -113,6 +113,22 @@ export const api = {
 
   digestCalendar: (year: number, month: number) =>
     j<{ active_dates: string[] }>(`${BASE}/digest/calendar?year=${year}&month=${month}`),
+
+  digestFeedback: (article_id: string, verdict: 'yes' | 'no' | 'clear', digest_date: string) =>
+    fetch(`${BASE}/digest/feedback`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ article_id, verdict, digest_date }),
+    }).then(async (r) => {
+      if (!r.ok) await throwApiError(r);
+      return r.json() as Promise<{ ok: boolean; verdict: 'yes' | 'no' | null }>;
+    }),
+
+  digestAudit: (date?: string, window_days: number = 7) => {
+    const params = new URLSearchParams({ window_days: String(window_days) });
+    if (date) params.set('date', date);
+    return j<DigestAudit>(`${BASE}/digest/audit?${params.toString()}`);
+  },
 
   openQuestions: () => j<OpenQuestionsResponse>(`${BASE}/open-questions`),
 
