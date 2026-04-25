@@ -9,7 +9,7 @@ description = "Personal knowledge wiki with 24/7 research agents, powered by Cla
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-authors = [{ name = "Sushil" }]
+authors = [{ name = "Mastisk contributors" }]
 keywords = ["knowledge-wiki", "agents", "claude", "ollama", "pwa"]
 classifiers = [
   "Development Status :: 3 - Alpha",

@@ -1,7 +1,7 @@
 # Notes Subsystem — Design Spec
 
 **Status:** Approved for planning (2026-04-21)
-**Author:** Sushil + Claude Opus 4.7 (brainstorming session)
+**Author:** Mastisk team (brainstormed with Claude Opus 4.7)
 **Scope:** First of three compounding subsystems for mastisk. See `project_mastisk_vision` memory for the broader roadmap (Notes → Multi-LLM Roundtable → GitHub Context Agent).
 
 ---

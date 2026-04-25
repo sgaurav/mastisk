@@ -26,7 +26,7 @@ log = logging.getLogger("mastisk.scout")
 # Relevance thresholds (tuned conservatively; easy to edit in one place)
 SIM_THRESHOLD = 0.25
 
-USER_AGENT = "Mastisk/0.1 (+https://github.com/sushilk1991/mastisk)"
+USER_AGENT = "Mastisk/0.1 (personal knowledge wiki; RSS reader)"
 HTTP_TIMEOUT = httpx.Timeout(connect=8.0, read=25.0, write=15.0, pool=5.0)
 
 

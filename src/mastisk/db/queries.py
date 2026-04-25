@@ -315,7 +315,7 @@ def user_info(conn: sqlite3.Connection) -> dict:
                 line = line.strip()
                 if not line or line.startswith("#") or line.startswith("("):
                     continue
-                # "- Sushil — engineer..." → "Sushil"
+                # "- Alice — engineer..." → "Alice"
                 cleaned = re.sub(r"^[-*•\d.\s]+", "", line).strip()
                 cleaned = re.split(r"[—\-–|,]", cleaned, maxsplit=1)[0].strip()
                 cleaned = re.sub(r"\*\*", "", cleaned)

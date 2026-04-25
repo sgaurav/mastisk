@@ -1,7 +1,7 @@
 # Blog Writer — Design Spec
 
 **Status:** Draft (autonomous, pending user review)
-**Author:** Sushil + Claude Opus 4.7
+**Author:** Mastisk team (brainstormed with Claude Opus 4.7)
 **Date:** 2026-04-22
 **Scope:** Fourth compounding subsystem. Notes + Roundtable + GitHub are shipped or in plan; Blog Writer sits on top of them, converting accumulated synthesis into first-person drafts.
 

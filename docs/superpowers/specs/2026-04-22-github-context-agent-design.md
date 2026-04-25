@@ -1,7 +1,7 @@
 # GitHub Context Agent — Design Spec
 
 **Status:** Draft (autonomous, pending user review)
-**Author:** Sushil + Claude Opus 4.7
+**Author:** Mastisk team (brainstormed with Claude Opus 4.7)
 **Date:** 2026-04-22
 **Scope:** Third of three compounding subsystems (Notes + Roundtable shipped).
 

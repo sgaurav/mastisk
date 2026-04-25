@@ -124,7 +124,7 @@ def db(vault_tmp: Path, data_tmp: Path) -> sqlite3.Connection:
 
 - [ ] **Step 3: Verify pytest discovers the tests directory**
 
-Run: `cd /Users/sushil/Code/mastisk && uv run pytest tests/ --collect-only`
+Run: `cd ~/Code/mastisk && uv run pytest tests/ --collect-only`
 Expected: `collected 0 items` (no tests yet; but no errors).
 
 - [ ] **Step 4: Commit**
@@ -170,7 +170,7 @@ def test_migration_adds_source_note_id_to_articles(db):
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /Users/sushil/Code/mastisk && uv run pytest tests/test_notes_queries.py -v`
+Run: `cd ~/Code/mastisk && uv run pytest tests/test_notes_queries.py -v`
 Expected: `FAILED` — `notes` not in tables.
 
 - [ ] **Step 3: Append the three tables + indexes to `db/schema.sql`**
@@ -252,7 +252,7 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cd /Users/sushil/Code/mastisk && uv run pytest tests/test_notes_queries.py -v`
+Run: `cd ~/Code/mastisk && uv run pytest tests/test_notes_queries.py -v`
 Expected: both tests PASS.
 
 - [ ] **Step 6: Commit**
@@ -285,7 +285,7 @@ def test_notes_dir_helpers(vault_tmp):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/sushil/Code/mastisk && uv run pytest tests/test_notes_queries.py::test_notes_dir_helpers -v`
+Run: `cd ~/Code/mastisk && uv run pytest tests/test_notes_queries.py::test_notes_dir_helpers -v`
 Expected: FAIL — `cannot import name 'notes_dir'`.
 
 - [ ] **Step 3: Add path helpers to `src/mastisk/paths.py`**
@@ -342,7 +342,7 @@ Add to the `Settings` class, near `budget: AgentBudget`:
 
 - [ ] **Step 5: Run tests to verify path helpers pass**
 
-Run: `cd /Users/sushil/Code/mastisk && uv run pytest tests/test_notes_queries.py -v`
+Run: `cd ~/Code/mastisk && uv run pytest tests/test_notes_queries.py -v`
 Expected: all tests PASS.
 
 - [ ] **Step 6: Commit**
@@ -402,7 +402,7 @@ def test_insert_note_slug_collision_appends_suffix(db):
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /Users/sushil/Code/mastisk && uv run pytest tests/test_notes_queries.py -v`
+Run: `cd ~/Code/mastisk && uv run pytest tests/test_notes_queries.py -v`
 Expected: two new tests FAIL with `cannot import name 'insert_note'`.
 
 - [ ] **Step 3: Add the helper to `src/mastisk/db/queries.py`**
@@ -449,7 +449,7 @@ def insert_note(
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd /Users/sushil/Code/mastisk && uv run pytest tests/test_notes_queries.py -v`
+Run: `cd ~/Code/mastisk && uv run pytest tests/test_notes_queries.py -v`
 Expected: all tests PASS.
 
 - [ ] **Step 5: Commit**
@@ -523,7 +523,7 @@ def test_soft_delete_sets_tombstone(db):
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /Users/sushil/Code/mastisk && uv run pytest tests/test_notes_queries.py -v`
+Run: `cd ~/Code/mastisk && uv run pytest tests/test_notes_queries.py -v`
 Expected: four new tests FAIL.
 
 - [ ] **Step 3: Add helpers to `src/mastisk/db/queries.py`**
@@ -566,7 +566,7 @@ def soft_delete_note(conn: sqlite3.Connection, note_id: int) -> None:
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd /Users/sushil/Code/mastisk && uv run pytest tests/test_notes_queries.py -v`
+Run: `cd ~/Code/mastisk && uv run pytest tests/test_notes_queries.py -v`
 Expected: all tests PASS (7 total in this file now).
 
 - [ ] **Step 5: Commit**
@@ -641,7 +641,7 @@ def test_post_notes_uses_cli_source(client):
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /Users/sushil/Code/mastisk && uv run pytest tests/test_notes_route.py -v`
+Run: `cd ~/Code/mastisk && uv run pytest tests/test_notes_route.py -v`
 Expected: FAIL — 404 on `/api/notes` (route not registered).
 
 - [ ] **Step 3: Create `src/mastisk/routes/notes.py`**
@@ -750,7 +750,7 @@ Find the block inside `create_app()` that calls `app.include_router(...)` for ea
 
 - [ ] **Step 5: Run tests to verify POST passes**
 
-Run: `cd /Users/sushil/Code/mastisk && uv run pytest tests/test_notes_route.py::test_post_notes_creates_file_and_row tests/test_notes_route.py::test_post_notes_rejects_empty_text -v`
+Run: `cd ~/Code/mastisk && uv run pytest tests/test_notes_route.py::test_post_notes_creates_file_and_row tests/test_notes_route.py::test_post_notes_rejects_empty_text -v`
 Expected: both PASS.
 
 - [ ] **Step 6: Commit**
@@ -807,7 +807,7 @@ def test_get_note_404_on_unknown(client):
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /Users/sushil/Code/mastisk && uv run pytest tests/test_notes_route.py -v`
+Run: `cd ~/Code/mastisk && uv run pytest tests/test_notes_route.py -v`
 Expected: FAIL with 404 or 422.
 
 - [ ] **Step 3: Add the endpoints to `src/mastisk/routes/notes.py`**
@@ -870,7 +870,7 @@ def _note_detail(row: dict) -> dict:
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd /Users/sushil/Code/mastisk && uv run pytest tests/test_notes_route.py -v`
+Run: `cd ~/Code/mastisk && uv run pytest tests/test_notes_route.py -v`
 Expected: all tests PASS including the earlier `test_post_notes_uses_cli_source`.
 
 - [ ] **Step 5: Commit**
@@ -923,7 +923,7 @@ def test_get_note_file_returns_markdown(client):
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /Users/sushil/Code/mastisk && uv run pytest tests/test_notes_route.py -v`
+Run: `cd ~/Code/mastisk && uv run pytest tests/test_notes_route.py -v`
 Expected: three new tests FAIL.
 
 - [ ] **Step 3: Add endpoints to `src/mastisk/routes/notes.py`**
@@ -965,7 +965,7 @@ async def get_note_file_endpoint(note_id: int) -> PlainTextResponse:
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd /Users/sushil/Code/mastisk && uv run pytest tests/test_notes_route.py -v`
+Run: `cd ~/Code/mastisk && uv run pytest tests/test_notes_route.py -v`
 Expected: all tests PASS.
 
 - [ ] **Step 5: Commit**
@@ -1056,7 +1056,7 @@ def note(
 
 - [ ] **Step 3: Smoke-test the CLI manually**
 
-Run: `cd /Users/sushil/Code/mastisk && uv run mastisk note "integration test note from CLI"`
+Run: `cd ~/Code/mastisk && uv run mastisk note "integration test note from CLI"`
 Expected output: `captured #N: <HHMMSS>-integration-test-note-from-cli`
 
 Verify file exists: `ls ~/Library/Mobile\ Documents/com~apple~CloudDocs/Mastisk/vault/_notes/inbox/` (if iCloud vault active) or `$MASTISK_VAULT/_notes/inbox/`.
@@ -1211,7 +1211,7 @@ Import `Note` at the top: `import type { Note } from './types';`.
 
 - [ ] **Step 4: Verify the frontend still builds**
 
-Run: `cd /Users/sushil/Code/mastisk/frontend && npm run build`
+Run: `cd ~/Code/mastisk/frontend && npm run build`
 Expected: build succeeds with no type errors. If type errors: match existing `api` export shape (it may be a `const api = { ... }` or a top-level namespace object).
 
 - [ ] **Step 5: Commit**
@@ -1354,7 +1354,7 @@ If Titlebar uses a different className convention (e.g. the file shows `classNam
 
 - [ ] **Step 3: Verify the frontend builds**
 
-Run: `cd /Users/sushil/Code/mastisk/frontend && npm run build`
+Run: `cd ~/Code/mastisk/frontend && npm run build`
 Expected: build succeeds.
 
 - [ ] **Step 4: Commit**
@@ -1442,7 +1442,7 @@ export function NotesView({ onNavigate }: Props) {
 
 - [ ] **Step 2: Verify the frontend builds**
 
-Run: `cd /Users/sushil/Code/mastisk/frontend && npm run build`
+Run: `cd ~/Code/mastisk/frontend && npm run build`
 Expected: success.
 
 - [ ] **Step 3: Commit**
@@ -1529,7 +1529,7 @@ export function NoteView({ noteId, onNavigate }: Props) {
 
 - [ ] **Step 2: Verify the frontend builds**
 
-Run: `cd /Users/sushil/Code/mastisk/frontend && npm run build`
+Run: `cd ~/Code/mastisk/frontend && npm run build`
 Expected: success.
 
 - [ ] **Step 3: Commit**
@@ -1596,7 +1596,7 @@ Near the bottom of the `return`, next to `<AskDrawer ... />`, add:
 
 - [ ] **Step 5: Verify the frontend builds and runs**
 
-Run: `cd /Users/sushil/Code/mastisk/frontend && npm run build && cd .. && uv run mastisk dev`
+Run: `cd ~/Code/mastisk/frontend && npm run build && cd .. && uv run mastisk dev`
 In another terminal: open http://localhost:8080 → click the `+` in titlebar → capture a note → land on the note detail view.
 
 - [ ] **Step 6: Commit**
@@ -1615,17 +1615,17 @@ git commit -m "notes(frontend): wire NotesView + NoteView + capture modal into A
 
 - [ ] **Step 1: Full pytest pass**
 
-Run: `cd /Users/sushil/Code/mastisk && uv run pytest -v`
+Run: `cd ~/Code/mastisk && uv run pytest -v`
 Expected: all tests PASS. Record failures as regressions to fix before continuing.
 
 - [ ] **Step 2: Full frontend typecheck + build**
 
-Run: `cd /Users/sushil/Code/mastisk/frontend && npm run build`
+Run: `cd ~/Code/mastisk/frontend && npm run build`
 Expected: zero TypeScript errors. The build emits into `src/mastisk/pwa/` per the existing Vite config.
 
 - [ ] **Step 3: Live smoke test (three capture paths)**
 
-Start mastisk: `cd /Users/sushil/Code/mastisk && uv run mastisk dev` (background), then in another terminal:
+Start mastisk: `cd ~/Code/mastisk && uv run mastisk dev` (background), then in another terminal:
 
 a) CLI path:
 ```bash
