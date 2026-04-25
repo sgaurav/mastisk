@@ -486,6 +486,7 @@ class BlogWriter(Agent):
         """
         settings = get_settings().blog
         identity_preamble = self._identity_preamble()
+        voice_skill = self._voice_skill()
         # First attempt at the requested cap; halve down to the floor.
         cap = per_source_cap
         floor = settings.min_per_source_chars
@@ -496,6 +497,7 @@ class BlogWriter(Agent):
                 identity_preamble=identity_preamble,
                 theme=theme,
                 sources_block=sources_block,
+                voice_skill=voice_skill,
             )
             if len(prompt) <= char_budget:
                 return prompt
@@ -521,6 +523,31 @@ class BlogWriter(Agent):
         """
         raw = Agent.load_identity()
         return raw.removeprefix("# About the user\n").strip() or "(no identity captured yet)"
+
+    @staticmethod
+    def _voice_skill() -> str:
+        """Load the human-voice rulebook shipped next to this agent.
+
+        ``blog_voice.md`` is a static skill file that codifies anti-AI-tell
+        rules for blog drafting (no em-dashes for asides, avoid ``It's not X
+        it's Y`` parallels, drop "delve/leverage/landscape" vocabulary, etc.).
+        Editable by the user; missing or empty file is a no-op so older
+        installs and the test fixtures keep working without it.
+        """
+        from pathlib import Path
+        p = Path(__file__).parent / "blog_voice.md"
+        if not p.exists():
+            return ""
+        raw = p.read_text().strip()
+        # The file is readable as a standalone doc with its own H1, but
+        # injecting that under our "## Voice rules" header would nest H1
+        # inside H2 and confuse the model's section tree (same issue
+        # _identity_preamble works around). Strip the first line if it
+        # starts with "# ".
+        if raw.startswith("# "):
+            _, _, rest = raw.partition("\n")
+            return rest.lstrip()
+        return raw
 
     def _render_sources_block(self, items: list[dict], per_source_cap: int) -> str:
         """Render the ``## Sources`` section. See spec §8.1."""
@@ -575,9 +602,13 @@ class BlogWriter(Agent):
 
     def _assemble(
         self, *, identity_preamble: str, theme: str, sources_block: str,
+        voice_skill: str = "",
     ) -> str:
         """Glue the prompt pieces together. Matches spec §8.2 exactly."""
         theme_text = theme.strip() if theme and theme.strip() else "(no theme — pick the strongest thread)"
+        # Voice block is appended only when blog_voice.md is present so older
+        # installs and the unit tests don't depend on the file.
+        voice_block = f"\n## Voice rules\n{voice_skill}\n\n" if voice_skill else "\n"
         return (
             "# Blog draft task\n\n"
             "You are drafting a personal blog post in the author's voice from their "
@@ -589,7 +620,8 @@ class BlogWriter(Agent):
             "a coherent argument about the theme. When no theme is provided, look at "
             "the sources, find the strongest recurring thread across them, and write "
             "about that.\n\n"
-            f"{sources_block}\n"
+            f"{sources_block}"
+            f"{voice_block}"
             "## Constraints\n"
             "- 800–2000 words. Aim for 1200.\n"
             "- First-person voice. Use \"I\" naturally; mirror the author's cadence from "
