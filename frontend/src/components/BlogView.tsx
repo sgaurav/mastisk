@@ -26,7 +26,11 @@ export function BlogView({ blogPostId, onNavigate, onLoaded }: Props) {
   const [copied, setCopied] = useState(false);
   const [vaultPath, setVaultPath] = useState<string | null>(null);
   const [pollToken, setPollToken] = useState(0);
+  const [copyMenuOpen, setCopyMenuOpen] = useState(false);
+  const [copyLabel, setCopyLabel] = useState<string | null>(null);
+  const copyMenuRef = useRef<HTMLDivElement | null>(null);
   const copyTimerRef = useRef<number | null>(null);
+  const copyLabelTimerRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
   const bpRef = useRef<BlogPostDetail | null>(null);
 
@@ -121,7 +125,30 @@ export function BlogView({ blogPostId, onNavigate, onLoaded }: Props) {
   useEffect(() => {
     return () => {
       if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
+      if (copyLabelTimerRef.current) window.clearTimeout(copyLabelTimerRef.current);
     };
+  }, []);
+
+  // Close the copy-format dropdown on outside click. Only attached while open.
+  useEffect(() => {
+    if (!copyMenuOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (!copyMenuRef.current?.contains(e.target as Node)) setCopyMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [copyMenuOpen]);
+
+  const onCopyFormat = useCallback(async (label: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyMenuOpen(false);
+      setCopyLabel(`copied (${label})`);
+      if (copyLabelTimerRef.current) window.clearTimeout(copyLabelTimerRef.current);
+      copyLabelTimerRef.current = window.setTimeout(() => setCopyLabel(null), 1800);
+    } catch {
+      setErr('clipboard unavailable');
+    }
   }, []);
 
   const onRegenerate = useCallback(async () => {
@@ -226,10 +253,72 @@ export function BlogView({ blogPostId, onNavigate, onLoaded }: Props) {
   const isTerminal = bp.status === 'done' || bp.status === 'failed';
   const fileMissing = bp.body_md === null && bp.error === 'file missing';
 
+  // Whether the top-toolbar Save action is offered. Same gate as the bottom
+  // version had — keep them mutually exclusive so the user only sees one.
+  const showTopSave = bp.status === 'done' && !bp.saved_as_note_id;
+
   return (
     <div className="view">
       <div className="view-h">Blog Post · #{bp.id}</div>
-      <h1 className="view-title">{title}</h1>
+      <div className="bp-title-row">
+        <h1 className="view-title">{title}</h1>
+        {(bp.body_md || showTopSave) && (
+          <div className="bp-toolbar">
+            {bp.body_md && (
+              <div ref={copyMenuRef} className="bp-copy-wrap">
+                <button
+                  className="bp-btn bp-btn-primary"
+                  onClick={() => setCopyMenuOpen(o => !o)}
+                  title="Copy post content formatted for sharing"
+                  aria-haspopup="menu"
+                  aria-expanded={copyMenuOpen}
+                >
+                  {copyLabel ? (
+                    <span className="bp-copied-flash" style={{ color: 'inherit' }}>
+                      {copyLabel}
+                    </span>
+                  ) : (
+                    <>
+                      <span>Copy</span>
+                      <span className="caret">▾</span>
+                    </>
+                  )}
+                </button>
+                {copyMenuOpen && (
+                  <div className="bp-menu" role="menu">
+                    <CopyMenuItem
+                      label="Markdown"
+                      hint="Substack · Dev.to · Hashnode (footnote citations)"
+                      onClick={() => onCopyFormat('markdown', formatMarkdown(bp))}
+                    />
+                    <CopyMenuItem
+                      label="Twitter Article"
+                      hint="X long-form (clean prose, links at end)"
+                      onClick={() => onCopyFormat('x article', formatTwitter(bp))}
+                    />
+                    <div className="bp-menu-divider" />
+                    <CopyMenuItem
+                      label="Plain text"
+                      hint="No citations, no sources"
+                      onClick={() => onCopyFormat('plain', formatPlain(bp))}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+            {showTopSave && (
+              <button
+                className="bp-btn"
+                onClick={onSaveAsNote}
+                disabled={saving}
+                title="Save this draft as a note in your wiki"
+              >
+                {saving ? 'saving…' : 'Save as note'}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
 
       <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--fg-faint)', marginBottom: 12 }}>
         {new Date(bp.created_at).toLocaleString()}
@@ -328,32 +417,39 @@ export function BlogView({ blogPostId, onNavigate, onLoaded }: Props) {
         </section>
       )}
 
-      <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
-        <button onClick={() => onNavigate('blog')}>← all drafts</button>
+      <div className="bp-actions">
+        <button className="bp-btn bp-btn-ghost" onClick={() => onNavigate('blog')}>
+          ← All drafts
+        </button>
         {isTerminal && (
-          <button onClick={onRegenerate} disabled={regenerating || deleting}>
-            {regenerating ? 'regenerating…' : 'regenerate'}
+          <button
+            className="bp-btn"
+            onClick={onRegenerate}
+            disabled={regenerating || deleting}
+          >
+            {regenerating ? 'regenerating…' : 'Regenerate'}
           </button>
         )}
         {bp.path && (
-          <button onClick={onCopyPath} title="Copy the vault file path for editing in Obsidian/VS Code">
-            {copied ? 'copied' : 'copy path'}
-          </button>
-        )}
-        {bp.status === 'done' && !bp.saved_as_note_id && (
-          <button onClick={onSaveAsNote} disabled={saving} style={{ marginLeft: 'auto' }}>
-            {saving ? 'saving…' : 'save as note'}
+          <button
+            className="bp-btn bp-btn-ghost"
+            onClick={onCopyPath}
+            title="Copy the vault file path for editing in Obsidian/VS Code"
+          >
+            {copied ? 'path copied' : 'Copy vault path'}
           </button>
         )}
         {bp.saved_as_note_id && (
           <button
+            className="bp-btn"
             onClick={() => onNavigate('note', String(bp.saved_as_note_id))}
-            style={{ marginLeft: 'auto' }}
           >
-            open saved note →
+            Open saved note →
           </button>
         )}
+        <span className="bp-spacer" />
         <button
+          className="bp-btn bp-btn-danger"
           onClick={onDelete}
           disabled={
             deleting || regenerating ||
@@ -364,9 +460,8 @@ export function BlogView({ blogPostId, onNavigate, onLoaded }: Props) {
               ? 'Wait for the draft to finish before deleting'
               : undefined
           }
-          style={bp.saved_as_note_id || bp.status === 'done' ? {} : { marginLeft: 'auto' }}
         >
-          {deleting ? 'deleting…' : 'delete'}
+          {deleting ? 'deleting…' : 'Delete'}
         </button>
       </div>
     </div>
@@ -436,6 +531,132 @@ function fallbackLabel(src: BlogPostSource): string {
   if (src.kind === 'article') return src.ref;
   if (src.kind === 'roundtable') return `roundtable #${src.ref}`;
   return src.ref;
+}
+
+// ───── Copy / share formatters ─────
+//
+// Goal: produce post-ready text for public platforms. The body's
+// `[source N]` markers reference a mix of public articles, internal
+// articles without a public origin, notes, and roundtables. Only
+// article sources with a known `resolved.url` make it into the
+// output — everything else (notes, roundtables, articles without a
+// public origin) is silently stripped from both prose and the sources
+// section, so a copied draft never carries an internal/localhost
+// reference into a public post. Surviving citations are renumbered
+// sequentially so the prose and the sources list line up.
+
+interface PublicEntry { n: number; src: BlogPostSource; }
+
+function buildPublicMap(sources: BlogPostSource[]): Map<number, PublicEntry> {
+  const map = new Map<number, PublicEntry>();
+  let next = 1;
+  for (const s of sources) {
+    if (!s.used) continue;
+    if (s.kind !== 'article') continue;
+    if (s.resolved.deleted) continue;
+    const url = s.resolved.url;
+    if (!url) continue;
+    map.set(s.n, { n: next++, src: s });
+  }
+  return map;
+}
+
+function tidyAfterStrip(text: string): string {
+  // After removing citations the prose can leave " ." or "  " artifacts.
+  // Tighten punctuation spacing and collapse runs of inline whitespace; do
+  // not touch newlines (paragraph structure must survive).
+  return text
+    .replace(/[ \t]+([.,;:!?])/g, '$1')
+    .replace(/[ \t]{2,}/g, ' ');
+}
+
+function rewriteCitations(
+  body: string,
+  publicMap: Map<number, PublicEntry>,
+  render: (newNs: number[]) => string,
+): string {
+  const re = new RegExp(CITATION_RE.source, 'gi');
+  const out = body.replace(re, (_match, nums: string) => {
+    const ns = nums
+      .split(',')
+      .map(p => p.replace(/source\s*/i, '').trim())
+      .map(p => Number(p))
+      .filter(n => Number.isFinite(n));
+    const newNs: number[] = [];
+    for (const n of ns) {
+      const entry = publicMap.get(n);
+      if (entry) newNs.push(entry.n);
+    }
+    if (newNs.length === 0) return '';
+    return render(newNs);
+  });
+  return tidyAfterStrip(out);
+}
+
+const SUPERSCRIPT_DIGITS: Record<string, string> = {
+  '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
+  '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
+};
+
+function toSuperscript(n: number): string {
+  return n.toString().split('').map(d => SUPERSCRIPT_DIGITS[d] ?? d).join('');
+}
+
+function orderedPublicEntries(map: Map<number, PublicEntry>): PublicEntry[] {
+  return Array.from(map.values()).sort((a, b) => a.n - b.n);
+}
+
+function titleHeader(bp: BlogPostDetail): string {
+  const t = bp.title?.trim();
+  return t ? `# ${t}\n\n` : '';
+}
+
+export function formatMarkdown(bp: BlogPostDetail): string {
+  const map = buildPublicMap(bp.sources);
+  const body = rewriteCitations(
+    bp.body_md ?? '',
+    map,
+    (newNs) => newNs.map(n => `[^${n}]`).join(''),
+  );
+  if (map.size === 0) return titleHeader(bp) + body;
+  const defs = orderedPublicEntries(map)
+    .map(({ n, src }) => `[^${n}]: [${src.resolved.title ?? `source ${n}`}](${src.resolved.url})`)
+    .join('\n');
+  return `${titleHeader(bp)}${body}\n\n${defs}\n`;
+}
+
+export function formatTwitter(bp: BlogPostDetail): string {
+  // X long-form: strip inline citation markers entirely so the prose reads
+  // clean (no superscripts breaking sentences). Keep the public links in
+  // a Sources block at the end — they're worth keeping accessible without
+  // cluttering the body.
+  const map = buildPublicMap(bp.sources);
+  const stripped = tidyAfterStrip((bp.body_md ?? '').replace(CITATION_RE, ''));
+  if (map.size === 0) return titleHeader(bp) + stripped;
+  const list = orderedPublicEntries(map)
+    .map(({ src }) => `- [${src.resolved.title ?? 'source'}](${src.resolved.url})`)
+    .join('\n');
+  return `${titleHeader(bp)}${stripped}\n\n## Sources\n\n${list}\n`;
+}
+
+export function formatPlain(bp: BlogPostDetail): string {
+  const stripped = tidyAfterStrip((bp.body_md ?? '').replace(CITATION_RE, ''));
+  return titleHeader(bp) + stripped;
+}
+
+interface CopyMenuItemProps {
+  label: string;
+  hint: string;
+  onClick: () => void;
+}
+
+function CopyMenuItem({ label, hint, onClick }: CopyMenuItemProps) {
+  return (
+    <button className="bp-menu-item" role="menuitem" onClick={onClick}>
+      <span className="label">{label}</span>
+      <span className="hint">{hint}</span>
+    </button>
+  );
 }
 
 // ───── Markdown rendering ─────

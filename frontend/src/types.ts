@@ -321,6 +321,7 @@ export interface BlogPostSource {
     title?: string;
     summary?: string;
     slug?: string;
+    url?: string | null;
     deleted: boolean;
   };
 }

@@ -305,10 +305,21 @@ def _resolve_source(conn: Any, row: dict) -> dict:
         if a is None:
             resolved = {"title": "(article deleted)", "deleted": True}
         else:
+            # Pull the article's primary public source URL so the PWA can
+            # build copy/share output that links to the original on the
+            # open web instead of an internal slug.
+            url_row = conn.execute(
+                """SELECT s.url FROM sources s
+                   JOIN article_sources a ON a.source_id = s.id
+                   WHERE a.article_id = ? AND s.url IS NOT NULL
+                   ORDER BY s.fetched_at ASC LIMIT 1""",
+                (ref,),
+            ).fetchone()
             resolved = {
                 "title": a["title"],
                 "summary": a["summary"],
                 "slug": a["slug"],
+                "url": url_row["url"] if url_row else None,
                 "deleted": False,
             }
     elif kind == "roundtable":
