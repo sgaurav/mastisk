@@ -19,7 +19,6 @@ export function AddRepoModal({ open, onClose, onAdded, onNavigate }: Props) {
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Folder-picker state (only used when source === 'local')
   const [browseOpen, setBrowseOpen] = useState(false);
   const [browseState, setBrowseState] = useState<{
     path: string; parent: string | null; entries: BrowseEntry[];
@@ -27,9 +26,7 @@ export function AddRepoModal({ open, onClose, onAdded, onNavigate }: Props) {
   const [browseBusy, setBrowseBusy] = useState(false);
 
   const { modalRef, ariaProps } = useModalA11y({
-    open,
-    onClose,
-    initialFocusRef: inputRef,
+    open, onClose, initialFocusRef: inputRef,
   });
 
   useEffect(() => {
@@ -43,7 +40,6 @@ export function AddRepoModal({ open, onClose, onAdded, onNavigate }: Props) {
     }
   }, [open]);
 
-  // Reset the input when switching tabs so placeholder cues match.
   useEffect(() => {
     if (!open) return;
     setValue('');
@@ -67,7 +63,7 @@ export function AddRepoModal({ open, onClose, onAdded, onNavigate }: Props) {
 
   const openBrowser = () => {
     setBrowseOpen(true);
-    void loadBrowse();  // start at ~
+    void loadBrowse();
   };
 
   const submit = async () => {
@@ -102,20 +98,8 @@ export function AddRepoModal({ open, onClose, onAdded, onNavigate }: Props) {
 
   if (!open) return null;
 
-  // Highlight PAT/private-repo hints so users know the fix path.
   const lower = (error ?? '').toLowerCase();
   const hintsPat = source === 'github' && (lower.includes('pat') || lower.includes('private'));
-
-  const tabButtonStyle = (active: boolean): React.CSSProperties => ({
-    flex: 1,
-    padding: '6px 10px',
-    border: 'none',
-    background: active ? 'var(--fg)' : 'transparent',
-    color: active ? 'var(--bg)' : 'var(--fg)',
-    cursor: 'pointer',
-    fontSize: 12,
-    fontFamily: 'var(--mono)',
-  });
 
   return (
     <div
@@ -132,35 +116,31 @@ export function AddRepoModal({ open, onClose, onAdded, onNavigate }: Props) {
         aria-labelledby="add-repo-title"
         tabIndex={-1}
         style={{
-          background: 'var(--bg)', border: '1px solid var(--border)',
-          borderRadius: 8, padding: 16, width: 'min(440px, 92vw)',
+          background: 'var(--bg-elev)', border: '1px solid var(--line)',
+          borderRadius: 8, padding: 20, width: 'min(440px, 92vw)',
         }}
         onClick={(e) => e.stopPropagation()}
       >
         <div
           id="add-repo-title"
-          style={{ fontSize: 12, color: 'var(--fg-faint)', marginBottom: 8, fontFamily: 'var(--mono)' }}
+          style={{ fontSize: 12, color: 'var(--fg-faint)', marginBottom: 14, fontFamily: 'var(--mono)' }}
         >
           add a repo
         </div>
+
         <div
           style={{
-            display: 'flex', gap: 0, marginBottom: 10,
-            border: '1px solid var(--border)', borderRadius: 4, overflow: 'hidden',
+            display: 'flex', gap: 0, marginBottom: 14,
+            border: '1px solid var(--line)', borderRadius: 6, overflow: 'hidden',
           }}
         >
-          <button onClick={() => setSource('github')} style={tabButtonStyle(source === 'github')}>
-            GitHub
-          </button>
-          <button onClick={() => setSource('local')} style={tabButtonStyle(source === 'local')}>
-            Local
-          </button>
+          <TabButton active={source === 'github'} onClick={() => setSource('github')}>GitHub</TabButton>
+          <TabButton active={source === 'local'} onClick={() => setSource('local')}>Local</TabButton>
         </div>
-        <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginBottom: 4, fontFamily: 'var(--mono)' }}>
-          {source === 'github' ? 'GitHub slug' : 'Absolute path'}
-        </div>
+
+        <Label>{source === 'github' ? 'GitHub slug' : 'Absolute path'}</Label>
         {source === 'local' ? (
-          <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+          <div style={{ display: 'flex', gap: 8 }}>
             <input
               ref={inputRef}
               value={value}
@@ -168,14 +148,9 @@ export function AddRepoModal({ open, onClose, onAdded, onNavigate }: Props) {
               onKeyDown={(e) => { if (e.key === 'Enter') void submit(); }}
               disabled={busy}
               placeholder="/Users/you/Code/someproj"
-              style={{
-                flex: 1, boxSizing: 'border-box',
-                background: 'transparent', color: 'var(--fg)',
-                border: '1px solid var(--border)', borderRadius: 4,
-                padding: 8, fontFamily: 'var(--mono)', fontSize: 14,
-              }}
+              style={inputStyle()}
             />
-            <button type="button" onClick={openBrowser} disabled={busy} title="Browse folders">
+            <button type="button" onClick={openBrowser} disabled={busy} style={btnGhost()}>
               Browse
             </button>
           </div>
@@ -187,34 +162,30 @@ export function AddRepoModal({ open, onClose, onAdded, onNavigate }: Props) {
             onKeyDown={(e) => { if (e.key === 'Enter') void submit(); }}
             disabled={busy}
             placeholder="owner/repo"
-            style={{
-              width: '100%', boxSizing: 'border-box',
-              background: 'transparent', color: 'var(--fg)',
-              border: '1px solid var(--border)', borderRadius: 4,
-              padding: 8, fontFamily: 'var(--mono)', fontSize: 14,
-            }}
+            style={inputStyle()}
           />
         )}
+
         {source === 'local' && browseOpen && (
           <div
             style={{
-              border: '1px solid var(--border)', borderRadius: 4,
-              marginBottom: 8, maxHeight: 320, display: 'flex', flexDirection: 'column',
+              border: '1px solid var(--line)', borderRadius: 6,
+              marginTop: 10, maxHeight: 320, display: 'flex', flexDirection: 'column',
+              background: 'var(--bg-card)',
             }}
           >
-            {/* Breadcrumb / up / "select this folder" */}
             <div
               style={{
-                padding: '6px 8px', borderBottom: '1px solid var(--border)',
+                padding: '8px 10px', borderBottom: '1px solid var(--line-soft)',
                 display: 'flex', alignItems: 'center', gap: 6,
-                fontSize: 11, fontFamily: 'var(--mono)',
+                fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--fg-mute)',
               }}
             >
               <button
                 type="button"
                 disabled={!browseState?.parent || browseBusy}
                 onClick={() => browseState?.parent && void loadBrowse(browseState.parent)}
-                style={{ padding: '1px 6px' }}
+                style={browseBtnStyle()}
                 title="Up one level"
               >
                 ↑
@@ -228,20 +199,25 @@ export function AddRepoModal({ open, onClose, onAdded, onNavigate }: Props) {
                 onClick={() => {
                   if (browseState) { setValue(browseState.path); setBrowseOpen(false); }
                 }}
+                style={browseBtnStyle()}
                 title="Use this folder"
               >
                 select
               </button>
-              <button type="button" onClick={() => setBrowseOpen(false)} title="Close">
+              <button
+                type="button"
+                onClick={() => setBrowseOpen(false)}
+                style={browseBtnStyle()}
+                title="Close"
+              >
                 ✕
               </button>
             </div>
-            {/* Entry list */}
             <div style={{ overflow: 'auto', padding: 4 }}>
               {browseBusy ? (
-                <div style={{ padding: 8, fontSize: 12, color: 'var(--fg-faint)' }}>loading…</div>
+                <div style={{ padding: 8, fontSize: 12, color: 'var(--fg-faint)', fontFamily: 'var(--mono)' }}>loading…</div>
               ) : !browseState || browseState.entries.filter(e => e.is_dir).length === 0 ? (
-                <div style={{ padding: 8, fontSize: 12, color: 'var(--fg-faint)' }}>(no subdirectories)</div>
+                <div style={{ padding: 8, fontSize: 12, color: 'var(--fg-faint)', fontFamily: 'var(--mono)' }}>(no subdirectories)</div>
               ) : (
                 browseState.entries
                   .filter(e => e.is_dir)
@@ -255,19 +231,23 @@ export function AddRepoModal({ open, onClose, onAdded, onNavigate }: Props) {
                       }}
                       style={{
                         display: 'flex', alignItems: 'center', gap: 8,
-                        width: '100%', textAlign: 'left', padding: '4px 8px',
+                        width: '100%', textAlign: 'left', padding: '5px 8px',
                         background: 'transparent', border: 'none',
                         fontSize: 13, cursor: 'pointer',
                         fontFamily: 'var(--mono)', color: 'var(--fg)',
+                        borderRadius: 4,
                       }}
                       title={e.is_git_repo ? 'git repo — click to select' : 'folder — click to open'}
                     >
-                      <span>{e.is_git_repo ? '*' : ''}</span>
+                      <span style={{ width: 12, color: 'var(--fg-faint)' }}>{e.is_git_repo ? '·' : ''}</span>
                       <span style={{ flex: 1 }}>
                         {e.name}
                         {e.is_git_repo && (
-                          <span style={{ color: 'var(--accent, #cc4444)', marginLeft: 6, fontSize: 10 }}>
-                            [repo]
+                          <span style={{
+                            color: 'var(--fg-mute)', marginLeft: 6, fontSize: 10,
+                            border: '1px solid var(--line-soft)', borderRadius: 4, padding: '1px 5px',
+                          }}>
+                            repo
                           </span>
                         )}
                       </span>
@@ -277,12 +257,13 @@ export function AddRepoModal({ open, onClose, onAdded, onNavigate }: Props) {
             </div>
           </div>
         )}
+
         {error && (
           <div
             style={{
-              color: 'var(--danger, crimson)',
-              marginTop: 6,
-              fontSize: 12,
+              marginTop: 12, padding: '8px 10px', borderRadius: 4,
+              background: 'rgba(197,48,48,0.08)', border: '1px solid rgba(197,48,48,0.3)',
+              color: '#c53030', fontFamily: 'var(--mono)', fontSize: 12,
               fontWeight: hintsPat ? 600 : 400,
             }}
           >
@@ -297,7 +278,7 @@ export function AddRepoModal({ open, onClose, onAdded, onNavigate }: Props) {
                     onClose();
                     onNavigate('settings');
                   }}
-                  style={{ color: 'var(--accent, #0a7)', textDecoration: 'underline', cursor: 'pointer' }}
+                  style={{ color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer' }}
                 >
                   → open Settings
                 </a>
@@ -305,11 +286,107 @@ export function AddRepoModal({ open, onClose, onAdded, onNavigate }: Props) {
             )}
           </div>
         )}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
-          <button onClick={onClose} disabled={busy}>cancel</button>
-          <button onClick={submit} disabled={busy || !value.trim()}>{busy ? 'verifying…' : 'add'}</button>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
+          <button onClick={onClose} disabled={busy} style={btnGhost()}>cancel</button>
+          <button
+            onClick={submit}
+            disabled={busy || !value.trim()}
+            style={btnPrimary(busy || !value.trim())}
+          >
+            {busy ? 'verifying…' : 'add'}
+          </button>
         </div>
       </div>
     </div>
   );
+}
+
+function Label({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{
+      fontSize: 11, color: 'var(--fg-faint)', marginBottom: 4,
+      fontFamily: 'var(--mono)',
+    }}>
+      {children}
+    </div>
+  );
+}
+
+function TabButton({ active, onClick, children }: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        flex: 1,
+        padding: '8px 12px',
+        border: 'none',
+        background: active ? 'var(--bg-sunk)' : 'transparent',
+        color: active ? 'var(--fg)' : 'var(--fg-mute)',
+        cursor: 'pointer',
+        fontSize: 12,
+        fontFamily: 'var(--mono)',
+        fontWeight: active ? 600 : 400,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function inputStyle(): React.CSSProperties {
+  return {
+    flex: 1,
+    width: '100%',
+    boxSizing: 'border-box',
+    padding: '10px 12px',
+    borderRadius: 6,
+    background: 'var(--bg-card)',
+    color: 'var(--fg)',
+    border: '1px solid var(--line)',
+    fontSize: 13,
+    fontFamily: 'var(--sans)',
+  };
+}
+
+function btnPrimary(disabled: boolean): React.CSSProperties {
+  return {
+    padding: '8px 16px',
+    borderRadius: 6,
+    background: disabled ? 'var(--bg-sunk)' : 'var(--accent)',
+    color: disabled ? 'var(--fg-faint)' : 'var(--fg-inv)',
+    fontSize: 13,
+    fontWeight: 500,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    border: 'none',
+  };
+}
+
+function btnGhost(): React.CSSProperties {
+  return {
+    padding: '8px 14px',
+    borderRadius: 6,
+    background: 'transparent',
+    color: 'var(--fg-mute)',
+    fontSize: 13,
+    border: '1px solid var(--line)',
+    cursor: 'pointer',
+  };
+}
+
+function browseBtnStyle(): React.CSSProperties {
+  return {
+    padding: '3px 8px',
+    borderRadius: 4,
+    background: 'transparent',
+    color: 'var(--fg-mute)',
+    fontSize: 11,
+    border: '1px solid var(--line)',
+    cursor: 'pointer',
+    fontFamily: 'var(--mono)',
+  };
 }
