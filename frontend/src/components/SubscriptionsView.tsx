@@ -8,18 +8,61 @@ interface Props {
   reloadKey?: number;
 }
 
+interface Toast { text: string; tone: 'ok' | 'err' | 'info' }
 type Filter = 'all' | SubscriptionKind;
 
 export function SubscriptionsView({ onNavigate, onAddSubscription, reloadKey }: Props) {
   const [rows, setRows] = useState<Subscription[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>('all');
+  const [toast, setToast] = useState<Toast | null>(null);
 
-  useEffect(() => {
-    api.subscriptions.list()
-      .then((d) => setRows(d.subscriptions))
-      .catch((e) => setErr(e instanceof Error ? e.message : 'failed'));
-  }, [reloadKey]);
+  const reload = async () => {
+    try {
+      const d = await api.subscriptions.list();
+      setRows(d.subscriptions);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'failed');
+    }
+  };
+
+  useEffect(() => { void reload(); }, [reloadKey]);
+
+  const flash = (t: Toast) => {
+    setToast(t);
+    setTimeout(() => setToast(null), 2400);
+  };
+
+  const onPollNow = async (url: string) => {
+    try {
+      await api.subscriptions.pollNow(url);
+      flash({ text: 'polling now — watch the ticker', tone: 'ok' });
+      setTimeout(() => void reload(), 4000);
+    } catch (e) {
+      flash({ text: e instanceof Error ? e.message : 'failed', tone: 'err' });
+    }
+  };
+
+  const onToggle = async (url: string, enabled: boolean) => {
+    try {
+      await api.subscriptions.toggle(url);
+      await reload();
+      flash({ text: enabled ? 'paused' : 'resumed', tone: 'info' });
+    } catch (e) {
+      flash({ text: e instanceof Error ? e.message : 'failed', tone: 'err' });
+    }
+  };
+
+  const onRemove = async (url: string, title: string) => {
+    if (!confirm(`Unsubscribe from\n${title || url}?\n\nPolling stops; existing wiki content is kept.`)) return;
+    try {
+      await api.subscriptions.remove(url);
+      await reload();
+      flash({ text: 'removed', tone: 'info' });
+    } catch (e) {
+      flash({ text: e instanceof Error ? e.message : 'failed', tone: 'err' });
+    }
+  };
 
   const filtered = useMemo(() => {
     if (!rows) return [];
@@ -27,58 +70,124 @@ export function SubscriptionsView({ onNavigate, onAddSubscription, reloadKey }: 
     return rows.filter((r) => r.kind === filter);
   }, [rows, filter]);
 
-  if (err) return <div className="view"><p style={{ color: 'var(--danger, crimson)' }}>{err}</p></div>;
-  if (!rows) return <div className="view"><p style={{ color: 'var(--fg-faint)', fontFamily: 'var(--mono)', fontSize: 12 }}>loading…</p></div>;
-
-  const isEmpty = rows.length === 0;
+  if (err) return <div className="view"><p style={{ color: '#c53030' }}>{err}</p></div>;
 
   return (
     <div className="view">
-      <div className="view-h">Subscriptions</div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
-        <h1 className="view-title" style={{ margin: 0 }}>
-          {rows.length} subscription{rows.length === 1 ? '' : 's'}
-        </h1>
-        {!isEmpty && (
-          <>
-            <FilterPills filter={filter} setFilter={setFilter} rows={rows} />
-            <div style={{ flex: 1 }} />
-            <button onClick={onAddSubscription}>+ add</button>
-          </>
-        )}
+      <div className="view-h">System · Subscriptions</div>
+      <h1 className="view-title">Sources your agents watch.</h1>
+      <p className="view-sub">
+        Scout polls each subscription every 10 minutes. New blog posts go to Compiler;
+        new YouTube videos and podcast episodes go to Listener for transcription. Add one
+        below, via the <strong>+</strong> in the sidebar, or via{' '}
+        <code style={{fontFamily:'var(--mono)',fontSize:12,background:'var(--bg-sunk)',padding:'1px 6px',borderRadius:4}}>mastisk subscribe &lt;url&gt;</code>.
+      </p>
+
+      <div style={{display:'flex',gap:10,alignItems:'center',margin:'24px 0 24px',flexWrap:'wrap'}}>
+        {rows && rows.length > 0 && <FilterPills filter={filter} setFilter={setFilter} rows={rows}/>}
+        <div style={{flex:1}}/>
+        <button onClick={onAddSubscription} style={btnPrimary(false)}>+ Add subscription</button>
       </div>
 
-      {isEmpty && (
-        <div style={{ marginTop: 8 }}>
-          <p className="view-sub" style={{ marginBottom: 12 }}>
-            Subscribe to keep up. Paste a YouTube channel, podcast, or RSS feed and Mastisk will process new uploads automatically.
-          </p>
-          <button
-            onClick={onAddSubscription}
-            style={{
-              padding: '10px 18px', fontSize: 14, fontWeight: 600,
-              background: 'var(--accent, #0a7)', color: 'var(--bg, white)',
-              border: '1px solid var(--accent, #0a7)', borderRadius: 6, cursor: 'pointer',
-            }}
-          >
-            + add your first subscription
-          </button>
-          <p className="view-sub" style={{ marginTop: 12, fontSize: 11 }}>
-            Or run <code>mastisk subscribe &lt;url&gt;</code> from the CLI.
-          </p>
+      <div className="view-h">Subscribed sources {rows && `· ${rows.length}`}</div>
+
+      {!rows && <p style={{color:'var(--fg-faint)',fontFamily:'var(--mono)',fontSize:12}}>loading…</p>}
+
+      {rows && rows.length === 0 && (
+        <div style={{padding:'24px',border:'1px dashed var(--line)',borderRadius:8,fontFamily:'var(--serif)',color:'var(--fg-mute)'}}>
+          No subscriptions yet. Hit <strong>+ Add subscription</strong> above.
+          <div style={{marginTop:10,fontSize:13}}>
+            Try a YouTube channel like <code>youtube.com/@mkbhd</code>, an Apple Podcasts URL,
+            or a podcast/blog RSS feed. Mastisk auto-detects the kind.
+          </div>
         </div>
       )}
 
-      {!isEmpty && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+      {rows && rows.length > 0 && filtered.length === 0 && (
+        <p style={{color:'var(--fg-mute)',fontFamily:'var(--serif)',padding:'16px 0'}}>
+          No subscriptions match this filter.
+        </p>
+      )}
+
+      {filtered.length > 0 && (
+        <div style={{border:'1px solid var(--line)',borderRadius:8,overflow:'hidden'}}>
           {filtered.map((r) => (
-            <SubscriptionRow key={r.url} sub={r} onNavigate={onNavigate} />
+            <SubscriptionRow
+              key={r.url}
+              sub={r}
+              onOpen={() => onNavigate('subscription', r.url)}
+              onPollNow={() => void onPollNow(r.url)}
+              onToggle={() => void onToggle(r.url, r.enabled)}
+              onRemove={() => void onRemove(r.url, r.title || '')}
+            />
           ))}
-          {filtered.length === 0 && (
-            <p className="view-sub">no subscriptions match this filter</p>
-          )}
         </div>
       )}
+
+      {toast && (
+        <div className="toast" style={{
+          background: toast.tone === 'err' ? '#c53030' : toast.tone === 'ok' ? 'var(--fg)' : 'var(--bg-elev)',
+          color: toast.tone === 'info' ? 'var(--fg)' : 'var(--fg-inv)',
+          border: toast.tone === 'info' ? '1px solid var(--line)' : 'none',
+        }}>{toast.text}</div>
+      )}
+    </div>
+  );
+}
+
+function SubscriptionRow({ sub, onOpen, onPollNow, onToggle, onRemove }: {
+  sub: Subscription;
+  onOpen: () => void;
+  onPollNow: () => void;
+  onToggle: () => void;
+  onRemove: () => void;
+}) {
+  const last = sub.last_fetched ? timeAgo(sub.last_fetched) : 'never';
+  const status: 'live' | 'paused' | 'error' = !sub.enabled
+    ? 'paused'
+    : sub.last_error ? 'error' : 'live';
+  return (
+    <div style={{
+      display:'grid',
+      gridTemplateColumns:'1fr auto auto auto',
+      gap:10,
+      padding:'14px 16px',
+      borderTop:'1px solid var(--line-soft)',
+      alignItems:'center',
+    }}>
+      <div style={{overflow:'hidden',cursor:'pointer'}} onClick={onOpen}>
+        <div style={{fontSize:14,color:'var(--fg)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+          <span style={{marginRight:8,color:'var(--fg-faint)'}}>{kindIcon(sub.kind)}</span>
+          {sub.title || sub.url}
+        </div>
+        <div style={{fontFamily:'var(--mono)',fontSize:11,color:'var(--fg-faint)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+          {sub.source_url ? (
+            <a href={sub.source_url} target="_blank" rel="noreferrer" style={{color:'inherit'}} onClick={(e) => e.stopPropagation()}>
+              {sub.source_url}
+            </a>
+          ) : sub.url}
+        </div>
+        <div style={{fontFamily:'var(--mono)',fontSize:10,color:'var(--fg-faint)',marginTop:3}}>
+          {kindLabel(sub.kind)}
+          <span style={{marginLeft:10}}>last polled: <span style={{color: sub.last_fetched ? 'var(--fg-mute)' : 'var(--accent)'}}>{last}</span></span>
+          {sub.items_24h > 0 && <span style={{marginLeft:10}}>{sub.items_24h} new today</span>}
+          {status === 'paused' && <span style={{marginLeft:10,color:'var(--accent)'}}>paused</span>}
+          {status === 'error' && (
+            <span style={{marginLeft:10,color:'#c53030'}} title={sub.last_error || ''}>
+              error
+            </span>
+          )}
+        </div>
+      </div>
+      <button onClick={(e) => { e.stopPropagation(); onPollNow(); }} style={btnGhost()} title="Poll this subscription right now">
+        Poll now
+      </button>
+      <button onClick={(e) => { e.stopPropagation(); onToggle(); }} style={btnGhost()} title={sub.enabled ? 'Pause polling' : 'Resume polling'}>
+        {sub.enabled ? 'Pause' : 'Resume'}
+      </button>
+      <button onClick={(e) => { e.stopPropagation(); onRemove(); }} style={btnGhost('danger')} title="Unsubscribe">
+        Remove
+      </button>
     </div>
   );
 }
@@ -93,19 +202,18 @@ function FilterPills({ filter, setFilter, rows }: {
     for (const r of rows) c[r.kind] += 1;
     return c;
   }, [rows]);
-
   const Pill = ({ k, label }: { k: Filter; label: string }) => (
     <button
       onClick={() => setFilter(k)}
       style={{
-        padding: '4px 10px', borderRadius: 999,
-        border: '1px solid var(--border, var(--line))',
-        background: filter === k ? 'var(--accent-soft, var(--bg-sunk))' : 'transparent',
-        color: filter === k ? 'var(--accent, var(--fg))' : 'var(--fg-mute)',
+        padding: '6px 12px', borderRadius: 999,
+        border: '1px solid var(--line)',
+        background: filter === k ? 'var(--bg-sunk)' : 'transparent',
+        color: filter === k ? 'var(--fg)' : 'var(--fg-mute)',
         fontFamily: 'var(--mono)', fontSize: 11, cursor: 'pointer',
       }}
     >
-      {label} <span style={{ opacity: 0.6 }}>{counts[k]}</span>
+      {label} <span style={{ opacity: 0.6, marginLeft: 4 }}>{counts[k]}</span>
     </button>
   );
   return (
@@ -118,61 +226,50 @@ function FilterPills({ filter, setFilter, rows }: {
   );
 }
 
-function SubscriptionRow({ sub, onNavigate }: {
-  sub: Subscription;
-  onNavigate: (view: View, id?: string) => void;
-}) {
-  const status: 'live' | 'paused' | 'error' = !sub.enabled
-    ? 'paused'
-    : sub.last_error ? 'error' : 'live';
-  const statusColor = status === 'error' ? 'var(--danger, crimson)'
-    : status === 'paused' ? 'var(--fg-faint)'
-    : 'var(--accent, #0a7)';
-  return (
-    <button
-      onClick={() => onNavigate('subscription', sub.url)}
-      style={{
-        textAlign: 'left', padding: 10,
-        border: '1px solid var(--border, var(--line))', borderRadius: 6,
-        background: 'var(--bg-soft, transparent)', cursor: 'pointer',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontSize: 14 }}>{kindIcon(sub.kind)}</span>
-        <span style={{ fontWeight: 500 }}>{sub.title || sub.url}</span>
-        <span style={{
-          marginLeft: 'auto', fontFamily: 'var(--mono)', fontSize: 10,
-          color: statusColor, textTransform: 'uppercase', letterSpacing: '0.04em',
-        }}>
-          {status}
-        </span>
-      </div>
-      <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--fg-faint)', marginTop: 4 }}>
-        {sub.source_url || sub.url}
-        {sub.last_fetched && <> · polled {timeAgo(sub.last_fetched)}</>}
-        {sub.items_24h > 0 && <> · {sub.items_24h} new today</>}
-        {sub.last_error && (
-          <> · <span style={{ color: 'var(--danger, crimson)' }} title={sub.last_error}>{sub.last_error.slice(0, 60)}</span></>
-        )}
-      </div>
-    </button>
-  );
-}
-
 function kindIcon(k: SubscriptionKind): string {
   if (k === 'youtube') return '▶';
   if (k === 'podcast') return '🎙';
-  return '📰';
+  return '◊';
 }
-
+function kindLabel(k: SubscriptionKind): string {
+  if (k === 'youtube') return 'YouTube';
+  if (k === 'podcast') return 'Podcast';
+  return 'RSS';
+}
 function timeAgo(iso: string): string {
-  const ms = Date.now() - new Date(iso.replace(' ', 'T') + 'Z').getTime();
-  if (Number.isNaN(ms)) return iso;
-  const m = Math.floor(ms / 60000);
-  if (m < 1) return 'just now';
+  const delta = Date.now() - new Date(iso.replace(' ', 'T') + 'Z').getTime();
+  if (delta < 0) return 'just now';
+  const s = Math.floor(delta / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
   if (m < 60) return `${m}m ago`;
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
   const d = Math.floor(h / 24);
   return `${d}d ago`;
+}
+
+function btnPrimary(disabled: boolean): React.CSSProperties {
+  return {
+    padding: '10px 18px',
+    borderRadius: 6,
+    background: disabled ? 'var(--bg-sunk)' : 'var(--accent)',
+    color: disabled ? 'var(--fg-faint)' : 'var(--fg-inv)',
+    fontSize: 13,
+    fontWeight: 500,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    border: 'none',
+  };
+}
+
+function btnGhost(tone: 'normal' | 'danger' = 'normal'): React.CSSProperties {
+  return {
+    padding: '7px 12px',
+    borderRadius: 5,
+    background: 'transparent',
+    color: tone === 'danger' ? 'var(--fg-mute)' : 'var(--fg)',
+    fontSize: 12,
+    border: '1px solid var(--line)',
+    cursor: 'pointer',
+  };
 }

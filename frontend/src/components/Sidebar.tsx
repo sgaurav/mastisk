@@ -113,7 +113,7 @@ export function Sidebar({ vault, pinned, user, currentView, currentArticle, onNa
           onClick={() => onNavigate('subscriptions')}
           style={{ flex: 1 }}
         >
-          <span className="glyph">🔔</span>
+          <span className="glyph">◈</span>
           <span className="label">Subscriptions</span>
         </div>
         <button
