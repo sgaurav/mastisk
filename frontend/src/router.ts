@@ -8,6 +8,7 @@ export interface Route {
   roundtableId: number | null;
   repoSlug: string | null;
   blogPostId: number | null;
+  subscriptionUrl: string | null;
   date: string | null;
 }
 
@@ -30,6 +31,7 @@ const VIEW_PATHS: Record<string, View> = {
   '/roundtables': 'roundtables',
   '/repos': 'repos',
   '/blog': 'blog',
+  '/subscriptions': 'subscriptions',
 };
 
 const PATH_FOR_VIEW: Record<View, string> = {
@@ -53,6 +55,8 @@ const PATH_FOR_VIEW: Record<View, string> = {
   repo: '/repos/',
   blog: '/blog',
   blog_post: '/blog/',
+  subscriptions: '/subscriptions',
+  subscription: '/subscriptions/',
 };
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -60,7 +64,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 function emptyRoute(view: View): Route {
   return {
     view, articleId: null, noteId: null, roundtableId: null, repoSlug: null,
-    blogPostId: null, date: null,
+    blogPostId: null, subscriptionUrl: null, date: null,
   };
 }
 
@@ -115,6 +119,17 @@ export function parseRoute(pathname: string): Route {
     }
     return emptyRoute('blog');
   }
+  if (pathname.startsWith('/subscriptions/')) {
+    const raw = pathname.slice('/subscriptions/'.length);
+    if (raw) {
+      try {
+        return { ...emptyRoute('subscription'), subscriptionUrl: decodeURIComponent(raw) };
+      } catch {
+        return emptyRoute('subscriptions');
+      }
+    }
+    return emptyRoute('subscriptions');
+  }
   const view = VIEW_PATHS[pathname];
   if (view) return emptyRoute(view);
   return emptyRoute('digest');
@@ -128,6 +143,7 @@ export function routeToPath(view: View, arg?: string | null): string {
   if (view === 'roundtable' && arg) return `/roundtables/${arg}`;
   if (view === 'repo' && arg) return `/repos/${arg}`;
   if (view === 'blog_post' && arg) return `/blog/${arg}`;
+  if (view === 'subscription' && arg) return `/subscriptions/${encodeURIComponent(arg)}`;
   return PATH_FOR_VIEW[view] ?? '/';
 }
 
@@ -149,6 +165,7 @@ export function useRoute() {
     else if (view === 'roundtable' && arg) next.roundtableId = Number(arg);
     else if (view === 'repo' && arg) next.repoSlug = arg;
     else if (view === 'blog_post' && arg) next.blogPostId = Number(arg);
+    else if (view === 'subscription' && arg) next.subscriptionUrl = arg;
     return next;
   };
 

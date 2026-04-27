@@ -30,6 +30,9 @@ import { RoundtableView } from './components/RoundtableView';
 import { ReposView } from './components/ReposView';
 import { RepoDetailView } from './components/RepoDetailView';
 import { AddRepoModal } from './components/AddRepoModal';
+import { SubscriptionsView } from './components/SubscriptionsView';
+import { SubscriptionDetailView } from './components/SubscriptionDetailView';
+import { AddSubscriptionModal } from './components/AddSubscriptionModal';
 import { BlogListView } from './components/BlogListView';
 import { BlogView } from './components/BlogView';
 import { BlogCreationModal } from './components/BlogCreationModal';
@@ -50,9 +53,11 @@ export function App() {
   const [captureOpen, setCaptureOpen] = useState(false);
   const [addRepoOpen, setAddRepoOpen] = useState(false);
   const [captureBlogOpen, setCaptureBlogOpen] = useState(false);
+  const [addSubOpen, setAddSubOpen] = useState(false);
   // Bumped after a successful add-repo, so ReposView re-fetches its list when
   // we're already on /repos (navigating there is a no-op in that case).
   const [reposReloadKey, setReposReloadKey] = useState(0);
+  const [subsReloadKey, setSubsReloadKey] = useState(0);
   const [askCtx, setAskCtx] = useState<{ prompt: string; selection: string | null; article_id?: string } | null>(null);
 
   const [sidebar, setSidebar] = useState<{ vault: VaultItem[]; pinned: PinnedItem[]; user: import('./types').UserInfo } | null>(null);
@@ -172,6 +177,7 @@ export function App() {
           onAddRepo={() => setAddRepoOpen(true)}
           onCaptureNote={() => setCaptureOpen(true)}
           onCreateBlog={() => setCaptureBlogOpen(true)}
+          onAddSubscription={() => setAddSubOpen(true)}
         />
       )}
 
@@ -207,6 +213,16 @@ export function App() {
           />
         )}
         {view === 'repo' && route.repoSlug && <RepoDetailView slug={route.repoSlug} onNavigate={navigate}/>}
+        {view === 'subscriptions' && (
+          <SubscriptionsView
+            onNavigate={navigate}
+            onAddSubscription={() => setAddSubOpen(true)}
+            reloadKey={subsReloadKey}
+          />
+        )}
+        {view === 'subscription' && route.subscriptionUrl && (
+          <SubscriptionDetailView url={route.subscriptionUrl} onNavigate={navigate}/>
+        )}
         {view === 'blog' && (
           <BlogListView
             onCreateBlog={() => setCaptureBlogOpen(true)}
@@ -269,6 +285,15 @@ export function App() {
         onCreated={(id) => {
           setCaptureBlogOpen(false);
           navigate('blog_post', String(id));
+        }}
+      />
+      <AddSubscriptionModal
+        open={addSubOpen}
+        onClose={() => setAddSubOpen(false)}
+        onAdded={(url) => {
+          setAddSubOpen(false);
+          setSubsReloadKey((k) => k + 1);
+          navigate('subscription', url);
         }}
       />
       {toast && (

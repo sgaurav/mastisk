@@ -307,7 +307,8 @@ export type View =
   | 'notes' | 'note'
   | 'roundtables' | 'roundtable'
   | 'repos' | 'repo'
-  | 'blog' | 'blog_post';
+  | 'blog' | 'blog_post'
+  | 'subscriptions' | 'subscription';
 
 export type BlogSourceKind = 'note' | 'article' | 'roundtable';
 
@@ -494,4 +495,47 @@ export interface VaultSelfFile {
   size: number;
   mtime: number;
   exists: boolean;
+}
+
+export type SubscriptionKind = 'rss' | 'youtube' | 'podcast';
+
+export interface Subscription {
+  url: string;
+  kind: SubscriptionKind;
+  source_url: string | null;
+  title: string | null;
+  enabled: boolean;
+  last_fetched: string | null;
+  last_etag: string | null;
+  last_modified: string | null;
+  last_seen_guid: string | null;
+  backfill_remaining: number;
+  max_per_poll: number;
+  bypass_interest_gate: boolean;
+  last_error: string | null;
+  added_at: string;
+  items_24h: number;
+}
+
+export interface SubscriptionResolved {
+  kind: SubscriptionKind;
+  url: string;
+  source_url: string;
+  title: string;
+  item_count: number | null;
+}
+
+export interface SubscriptionRecentItem {
+  id: number;
+  agent: string;
+  kind: string;
+  status: string;
+  created_at: string;
+  error: string | null;
+  payload_json: string;
+}
+
+export interface SubscriptionDetail {
+  subscription: Subscription;
+  recent_items: SubscriptionRecentItem[];
 }

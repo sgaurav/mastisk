@@ -3,6 +3,7 @@ import type {
   BlogPostSummary, Digest, DigestAudit, Feed,
   FeedTick, AgentInfo, GraphData, Job, Note, OpenQuestionsResponse, PendingSynthesisResponse,
   PinnedItem, RepoDetail, RepoIdeasResponse, RepoSummary, Roundtable, RoundtableSummary, SettingsBundle, SettingsPatch,
+  Subscription, SubscriptionDetail, SubscriptionResolved,
   SynthesisRunResponse, UserInfo, VaultItem, VaultSelfFile,
 } from './types';
 
@@ -205,6 +206,58 @@ export const api = {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(patch),
     }),
+
+  subscriptions: {
+    list: () => j<{ subscriptions: Subscription[] }>(`${BASE}/subscriptions`),
+    probe: (url: string) =>
+      fetch(`${BASE}/subscriptions/probe`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ url }),
+      }).then(async (r) => {
+        if (!r.ok) {
+          const body = await r.json().catch(() => ({}));
+          throw new ApiError(body.detail || `${r.status}`, r.status, body.detail || '');
+        }
+        return r.json() as Promise<SubscriptionResolved>;
+      }),
+    create: (body: { url: string; title?: string; backfill?: number; bypass_interest_gate?: boolean }) =>
+      fetch(`${BASE}/subscriptions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      }).then(async (r) => {
+        if (!r.ok) {
+          const e = await r.json().catch(() => ({}));
+          throw new ApiError(e.detail || `${r.status}`, r.status, e.detail || '');
+        }
+        return r.json() as Promise<{ ok: boolean; subscription: Subscription; resolved: SubscriptionResolved }>;
+      }),
+    get: (url: string) =>
+      j<SubscriptionDetail>(`${BASE}/subscriptions/${encodeURIComponent(url)}`),
+    remove: (url: string) =>
+      fetch(`${BASE}/subscriptions/${encodeURIComponent(url)}`, { method: 'DELETE' })
+        .then((r) => { if (!r.ok) throw new Error(`${r.status}`); return r.json(); }),
+    toggle: (url: string) =>
+      j<{ ok: boolean; subscription: Subscription }>(
+        `${BASE}/subscriptions/${encodeURIComponent(url)}/toggle`,
+        { method: 'POST' },
+      ),
+    pollNow: (url: string) =>
+      j<{ ok: boolean; queued: string }>(
+        `${BASE}/subscriptions/${encodeURIComponent(url)}/poll`,
+        { method: 'POST' },
+      ),
+    update: (url: string, patch: { title?: string; max_per_poll?: number; bypass_interest_gate?: boolean }) =>
+      j<{ ok: boolean; subscription: Subscription }>(
+        `${BASE}/subscriptions/${encodeURIComponent(url)}`,
+        {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(patch),
+        },
+      ),
+  },
 
   vault: {
     listSelf: () => j<{ files: VaultSelfFile[] }>(`${BASE}/vault/self`),

@@ -11,11 +11,12 @@ interface Props {
   onAddRepo: () => void;
   onCaptureNote: () => void;
   onCreateBlog: () => void;
+  onAddSubscription: () => void;
 }
 
-const SYS_VIEWS = new Set<View>(['digest', 'queue', 'feed', 'agents', 'graph', 'ingest', 'lint', 'settings', 'open_questions', 'notes', 'roundtables', 'repos', 'blog']);
+const SYS_VIEWS = new Set<View>(['digest', 'queue', 'feed', 'agents', 'graph', 'ingest', 'lint', 'settings', 'open_questions', 'notes', 'roundtables', 'repos', 'blog', 'subscriptions']);
 
-export function Sidebar({ vault, pinned, user, currentView, currentArticle, onNavigate, onAddRepo, onCaptureNote, onCreateBlog }: Props) {
+export function Sidebar({ vault, pinned, user, currentView, currentArticle, onNavigate, onAddRepo, onCaptureNote, onCreateBlog, onAddSubscription }: Props) {
   // Folders are collapsed by default. A label appearing in `opened` with value
   // true means the user has expanded it. Kept in-memory per session — no
   // persistence, since recall of "which sections were open last week" isn't a
@@ -98,6 +99,27 @@ export function Sidebar({ vault, pinned, user, currentView, currentArticle, onNa
           onClick={(e) => { e.stopPropagation(); onAddRepo(); }}
           title="Add a repo"
           aria-label="Add a repo"
+          style={{
+            background: 'transparent', border: 'none', color: 'var(--fg-faint)',
+            fontSize: 14, cursor: 'pointer', padding: '2px 6px',
+          }}
+        >
+          +
+        </button>
+      </div>
+      <div className="side-row-group" style={{ display: 'flex', alignItems: 'center' }}>
+        <div
+          className={`side-row ${currentView === 'subscriptions' || currentView === 'subscription' ? 'active' : ''}`}
+          onClick={() => onNavigate('subscriptions')}
+          style={{ flex: 1 }}
+        >
+          <span className="glyph">🔔</span>
+          <span className="label">Subscriptions</span>
+        </div>
+        <button
+          onClick={(e) => { e.stopPropagation(); onAddSubscription(); }}
+          title="Add a subscription"
+          aria-label="Add a subscription"
           style={{
             background: 'transparent', border: 'none', color: 'var(--fg-faint)',
             fontSize: 14, cursor: 'pointer', padding: '2px 6px',
