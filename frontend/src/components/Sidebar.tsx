@@ -127,6 +127,41 @@ export function Sidebar({ vault, pinned, user, currentView, currentArticle, onNa
           +
         </button>
       </div>
+      <div
+        className={`side-row ${currentView === 'settings' ? 'active' : ''}`}
+        onClick={() => onNavigate('settings')}
+      >
+        <span className="glyph">⚙</span>
+        <span className="label">Settings</span>
+      </div>
+      {(() => {
+        const healthOpen = opened['Health'] === true;
+        return (
+          <div>
+            <div className={`side-folder ${healthOpen ? '' : 'collapsed'}`} onClick={() => toggle('Health')}>
+              <span className="chev">▾</span><span>Health</span><span className="count">2</span>
+            </div>
+            {healthOpen && (
+              <div className="side-children">
+                <div
+                  className={`side-row ${currentView === 'agents' ? 'active' : ''}`}
+                  onClick={() => onNavigate('agents')}
+                >
+                  <span className="glyph">◯</span>
+                  <span className="label">Agent</span>
+                </div>
+                <div
+                  className={`side-row ${currentView === 'lint' ? 'active' : ''}`}
+                  onClick={() => onNavigate('lint')}
+                >
+                  <span className="glyph">✓</span>
+                  <span className="label">System</span>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
       {user && (
         <div className="user-pill" onClick={() => onNavigate('ingest')} role="button" title="Sources & ingest">
           <div className="user-avatar">{user.initials}</div>
