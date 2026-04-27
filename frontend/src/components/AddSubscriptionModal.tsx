@@ -32,7 +32,6 @@ export function AddSubscriptionModal({ open, onClose, onAdded }: Props) {
     open, onClose, initialFocusRef: inputRef,
   });
 
-  // Reset state on open
   useEffect(() => {
     if (open) {
       setUrl('');
@@ -46,14 +45,10 @@ export function AddSubscriptionModal({ open, onClose, onAdded }: Props) {
     }
   }, [open]);
 
-  // Debounced probe as URL changes
   useEffect(() => {
     if (!open) return;
     const trimmed = url.trim();
-    if (!trimmed) {
-      setProbe({ kind: 'idle' });
-      return;
-    }
+    if (!trimmed) { setProbe({ kind: 'idle' }); return; }
     if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
       setProbe({ kind: 'idle' });
       return;
@@ -63,7 +58,6 @@ export function AddSubscriptionModal({ open, onClose, onAdded }: Props) {
       try {
         const data = await api.subscriptions.probe(trimmed);
         setProbe({ kind: 'detected', data });
-        // Per-kind defaults: bypass interest filter for YouTube/podcast.
         setBypass(data.kind !== 'rss');
         if (!titleEdited) setTitle(data.title);
       } catch (e) {
@@ -110,75 +104,61 @@ export function AddSubscriptionModal({ open, onClose, onAdded }: Props) {
         aria-labelledby="add-sub-title"
         tabIndex={-1}
         style={{
-          background: 'var(--bg)', border: '1px solid var(--border, var(--line))',
-          borderRadius: 8, padding: 18, width: 'min(480px, 92vw)',
+          background: 'var(--bg-elev)', border: '1px solid var(--line)',
+          borderRadius: 8, padding: 20, width: 'min(480px, 92vw)',
         }}
         onClick={(e) => e.stopPropagation()}
       >
         <div
           id="add-sub-title"
-          style={{ fontSize: 12, color: 'var(--fg-faint)', marginBottom: 10, fontFamily: 'var(--mono)' }}
+          style={{ fontSize: 12, color: 'var(--fg-faint)', marginBottom: 14, fontFamily: 'var(--mono)' }}
         >
           add a subscription
         </div>
 
-        <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginBottom: 4, fontFamily: 'var(--mono)' }}>
-          URL
-        </div>
+        <Label>URL</Label>
         <input
           ref={inputRef}
+          type="url"
           value={url}
           onChange={(e) => { setUrl(e.target.value); setSubmitError(null); }}
           onKeyDown={(e) => { if (e.key === 'Enter' && probe.kind === 'detected' && !busy) void submit(); }}
           disabled={busy}
-          placeholder="youtube.com/@channel · podcast feed · Apple Podcasts URL · RSS feed"
-          style={{
-            width: '100%', boxSizing: 'border-box',
-            background: 'transparent', color: 'var(--fg)',
-            border: '1px solid var(--border, var(--line))', borderRadius: 4,
-            padding: 8, fontFamily: 'var(--mono)', fontSize: 13,
-          }}
+          placeholder="youtube.com/@channel · podcast feed · Apple Podcasts URL · RSS"
+          style={inputStyle()}
         />
 
         <ProbePill state={probe} />
 
         {probe.kind === 'detected' && (
           <>
-            <div style={{ marginTop: 12 }}>
-              <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginBottom: 4, fontFamily: 'var(--mono)' }}>
-                Title <span style={{ opacity: 0.6 }}>(blank uses default)</span>
-              </div>
+            <div style={{ marginTop: 14 }}>
+              <Label hint="blank uses the source's name">Title</Label>
               <input
+                type="text"
                 value={title}
                 onChange={(e) => { setTitle(e.target.value); setTitleEdited(true); }}
                 disabled={busy}
-                style={{
-                  width: '100%', boxSizing: 'border-box',
-                  background: 'transparent', color: 'var(--fg)',
-                  border: '1px solid var(--border, var(--line))', borderRadius: 4,
-                  padding: 8, fontFamily: 'var(--mono)', fontSize: 13,
-                }}
+                style={inputStyle()}
               />
             </div>
 
-            <div style={{ display: 'flex', gap: 16, marginTop: 12, alignItems: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: 18, marginTop: 14, alignItems: 'flex-end' }}>
               <div>
-                <div style={{ fontSize: 11, color: 'var(--fg-faint)', marginBottom: 4, fontFamily: 'var(--mono)' }}>
-                  Backfill
-                </div>
+                <Label>Backfill</Label>
                 <input
                   type="number" min={0} max={50}
                   value={backfill}
                   onChange={(e) => setBackfill(Math.max(0, Math.min(50, Number(e.target.value) || 0)))}
                   disabled={busy}
-                  style={{
-                    width: 80, background: 'transparent', color: 'var(--fg)',
-                    border: '1px solid var(--border, var(--line))', borderRadius: 4,
-                    padding: 8, fontFamily: 'var(--mono)', fontSize: 13,
-                  }}
+                  style={{ ...inputStyle(), width: 80 }}
                 />
               </div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--fg-mute)', cursor: 'pointer' }}>
+              <label style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                fontSize: 12, color: 'var(--fg-mute)', cursor: 'pointer',
+                paddingBottom: 8,
+              }}>
                 <input
                   type="checkbox"
                   checked={bypass}
@@ -192,16 +172,21 @@ export function AddSubscriptionModal({ open, onClose, onAdded }: Props) {
         )}
 
         {submitError && (
-          <div style={{ marginTop: 12, color: '#c53030', fontSize: 12, fontFamily: 'var(--mono)' }}>
+          <div style={{
+            marginTop: 14, padding: '8px 10px', borderRadius: 4,
+            background: 'rgba(197,48,48,0.08)', border: '1px solid rgba(197,48,48,0.3)',
+            color: '#c53030', fontFamily: 'var(--mono)', fontSize: 12,
+          }}>
             {submitError}
           </div>
         )}
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-          <button onClick={onClose} disabled={busy}>cancel</button>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
+          <button onClick={onClose} disabled={busy} style={btnGhost()}>cancel</button>
           <button
             onClick={() => void submit()}
             disabled={busy || probe.kind !== 'detected'}
+            style={btnPrimary(busy || probe.kind !== 'detected')}
           >
             {busy ? 'subscribing…' : 'subscribe'}
           </button>
@@ -211,27 +196,59 @@ export function AddSubscriptionModal({ open, onClose, onAdded }: Props) {
   );
 }
 
+function Label({ children, hint }: { children: React.ReactNode; hint?: string }) {
+  return (
+    <div style={{
+      fontSize: 11, color: 'var(--fg-faint)', marginBottom: 4,
+      fontFamily: 'var(--mono)',
+    }}>
+      {children}
+      {hint && <span style={{ marginLeft: 6, opacity: 0.7 }}>({hint})</span>}
+    </div>
+  );
+}
+
 function ProbePill({ state }: { state: ProbeState }) {
-  if (state.kind === 'idle') return <div style={{ height: 10 }} />;
+  if (state.kind === 'idle') return <div style={{ height: 8 }} />;
   if (state.kind === 'probing') {
     return (
-      <div style={{ marginTop: 8, fontSize: 12, color: 'var(--fg-faint)', fontFamily: 'var(--mono)' }}>
+      <div style={{
+        marginTop: 8, fontSize: 12, color: 'var(--fg-faint)',
+        fontFamily: 'var(--mono)',
+      }}>
         probing…
       </div>
     );
   }
   if (state.kind === 'error') {
     return (
-      <div style={{ marginTop: 8, fontSize: 12, color: '#c53030', fontFamily: 'var(--mono)' }}>
-        ✗ {state.message}
+      <div style={{
+        marginTop: 8, padding: '6px 10px', borderRadius: 4,
+        background: 'rgba(197,48,48,0.08)', border: '1px solid rgba(197,48,48,0.25)',
+        color: '#c53030', fontFamily: 'var(--mono)', fontSize: 12,
+      }}>
+        {state.message}
       </div>
     );
   }
   const { data } = state;
   return (
-    <div style={{ marginTop: 8, fontSize: 12, color: 'var(--accent, var(--fg))', fontFamily: 'var(--mono)' }}>
-      ✓ Detected: {kindLabel(data.kind)} · {data.title}
-      {data.item_count != null && <span style={{ opacity: 0.7 }}> · {formatCount(data.item_count)} items</span>}
+    <div style={{
+      marginTop: 8,
+      fontSize: 12, color: 'var(--fg-mute)',
+      fontFamily: 'var(--mono)',
+      display: 'flex', alignItems: 'center', gap: 6,
+    }}>
+      <span style={{ color: 'var(--fg)', fontWeight: 600 }}>✓</span>
+      <span>{kindLabel(data.kind)}</span>
+      <span style={{ opacity: 0.5 }}>·</span>
+      <span style={{ color: 'var(--fg)' }}>{data.title}</span>
+      {data.item_count != null && (
+        <>
+          <span style={{ opacity: 0.5 }}>·</span>
+          <span>{formatCount(data.item_count)} items</span>
+        </>
+      )}
     </div>
   );
 }
@@ -246,4 +263,43 @@ function formatCount(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return String(n);
+}
+
+function inputStyle(): React.CSSProperties {
+  return {
+    width: '100%',
+    boxSizing: 'border-box',
+    padding: '10px 12px',
+    borderRadius: 6,
+    background: 'var(--bg-card)',
+    color: 'var(--fg)',
+    border: '1px solid var(--line)',
+    fontSize: 13,
+    fontFamily: 'var(--sans)',
+  };
+}
+
+function btnPrimary(disabled: boolean): React.CSSProperties {
+  return {
+    padding: '8px 16px',
+    borderRadius: 6,
+    background: disabled ? 'var(--bg-sunk)' : 'var(--accent)',
+    color: disabled ? 'var(--fg-faint)' : 'var(--fg-inv)',
+    fontSize: 13,
+    fontWeight: 500,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    border: 'none',
+  };
+}
+
+function btnGhost(): React.CSSProperties {
+  return {
+    padding: '8px 14px',
+    borderRadius: 6,
+    background: 'transparent',
+    color: 'var(--fg-mute)',
+    fontSize: 13,
+    border: '1px solid var(--line)',
+    cursor: 'pointer',
+  };
 }
