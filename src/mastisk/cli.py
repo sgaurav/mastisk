@@ -1074,11 +1074,11 @@ def _config_template(ollama_key: str) -> str:
 # Secrets live here (never in the iCloud vault).
 
 ollama_cloud_key = "{ollama_key}"
-ollama_local_only = {"true" if not ollama_key else "false"}
+ollama_local_only = true
 
-# embed_model = "nomic-embed-text"
-# summarize_model_heavy = "llama3.3:70b"
-# summarize_model_cheap = "llama3.2:3b"
+embed_model = "nomic-embed-text"
+summarize_model_heavy = "qwen3.6:latest"
+summarize_model_cheap = "qwen3.6:latest"
 
 [budget]
 scout = 500
@@ -1086,6 +1086,15 @@ listener = 20
 compiler = 100
 linter = 50
 synthesizer = 10
+
+[notes]
+notetaker_model = "qwen3.6:latest"
+
+[blog]
+ollama_model = "qwen3.6:latest"
+
+[roundtable]
+perspective_models = {{ claude = "claude-sonnet-4-6", codex = "gpt-5-codex", gemini = "gemini-2.5-pro", ollama = "qwen3.6:latest" }}
 '''
 
 

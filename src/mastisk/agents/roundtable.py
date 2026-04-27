@@ -68,7 +68,7 @@ Keep it under 250 words. Plain prose.
 # Fallback model for Ollama if the user hasn't configured one. Matches the
 # default in RoundtableSettings.perspective_models so the fallback path never
 # passes ``None`` to the httpx layer (where it becomes a 400).
-_OLLAMA_DEFAULT_MODEL = "llama3.1:8b"
+_OLLAMA_DEFAULT_MODEL = "qwen3.6:latest"
 
 
 class Roundtable(Agent):

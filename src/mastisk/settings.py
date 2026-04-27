@@ -59,7 +59,7 @@ class RoundtableSettings(BaseSettings):
         "claude": "claude-sonnet-4-6",
         "codex": "gpt-5-codex",
         "gemini": "gemini-2.5-pro",
-        "ollama": "llama3.1:8b",
+        "ollama": "qwen3.6:latest",
     })
     context_max_chars: int = 4000
 
@@ -94,7 +94,7 @@ class BlogSettings(BaseSettings):
     draft_word_count_min: int = 800
     draft_word_count_max: int = 2000
     claude_timeout_seconds: int = 240
-    ollama_model: str = "llama3.1:8b"
+    ollama_model: str = "qwen3.6:latest"
 
 
 class Settings(BaseSettings):
@@ -117,13 +117,13 @@ class Settings(BaseSettings):
     ollama_cloud_url: str = Field(default="https://ollama.com", alias="OLLAMA_CLOUD_URL")
     ollama_cloud_key: str | None = Field(default=None, alias="OLLAMA_CLOUD_KEY")
     ollama_local_url: str = Field(default="http://localhost:11434", alias="OLLAMA_LOCAL_URL")
-    ollama_local_only: bool = Field(default=False, alias="OLLAMA_LOCAL_ONLY")
+    ollama_local_only: bool = Field(default=True, alias="OLLAMA_LOCAL_ONLY")
 
-    # Models. Defaults chosen to work out of the box with common local + cloud-proxied Ollama stacks.
+    # Models. Defaults assume local Ollama with qwen3.6 pulled.
     # Override in ~/Library/Application Support/Mastisk/config.toml
     embed_model: str = "nomic-embed-text"        # `ollama pull nomic-embed-text`
-    summarize_model_heavy: str = "kimi-k2.5:cloud"  # cloud-proxied via signed-in local ollama
-    summarize_model_cheap: str = "qwen3.5:4b"    # local, fast
+    summarize_model_heavy: str = "qwen3.6:latest"
+    summarize_model_cheap: str = "qwen3.6:latest"
 
     # Agent budgets (daily caps — enforced by Agent.run_once)
     budget: AgentBudget = Field(default_factory=AgentBudget)
