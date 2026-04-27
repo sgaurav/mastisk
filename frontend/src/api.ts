@@ -3,7 +3,7 @@ import type {
   BlogPostSummary, Digest, DigestAudit, Feed,
   FeedTick, AgentInfo, GraphData, Job, Note, OpenQuestionsResponse, PendingSynthesisResponse,
   PinnedItem, RepoDetail, RepoIdeasResponse, RepoSummary, Roundtable, RoundtableSummary, SettingsBundle, SettingsPatch,
-  SynthesisRunResponse, UserInfo, VaultItem,
+  SynthesisRunResponse, UserInfo, VaultItem, VaultSelfFile,
 } from './types';
 
 const BASE = '/api';
@@ -205,6 +205,18 @@ export const api = {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(patch),
     }),
+
+  vault: {
+    listSelf: () => j<{ files: VaultSelfFile[] }>(`${BASE}/vault/self`),
+    readSelf: (name: string) =>
+      j<{ name: string; content: string }>(`${BASE}/vault/self/${encodeURIComponent(name)}`),
+    writeSelf: (name: string, content: string) =>
+      j<{ ok: boolean }>(`${BASE}/vault/self/${encodeURIComponent(name)}`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ content }),
+      }),
+  },
 
   synthesisForArticle: (articleId: string) =>
     j<SynthesisRunResponse>(`${BASE}/synthesis/by-article/${encodeURIComponent(articleId)}`),

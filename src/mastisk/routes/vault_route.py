@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from mastisk.paths import self_dir, vault_dir, vault_is_icloud
+from mastisk.routes.notes import atomic_write
 
 router = APIRouter(tags=["vault"])
 
@@ -18,6 +19,19 @@ def info():
         "icloud": vault_is_icloud(),
         "self_files": _SELF_FILES,
     }
+
+
+@router.get("/vault/self")
+def list_self():
+    out = []
+    for name in _SELF_FILES:
+        p = self_dir() / f"{name}.md"
+        if p.exists():
+            st = p.stat()
+            out.append({"name": name, "size": st.st_size, "mtime": st.st_mtime, "exists": True})
+        else:
+            out.append({"name": name, "size": 0, "mtime": 0.0, "exists": False})
+    return {"files": out}
 
 
 @router.get("/vault/self/{name}")
@@ -36,6 +50,5 @@ class SelfIn(BaseModel):
 def write_self(name: str, body: SelfIn):
     if name not in _SELF_FILES:
         raise HTTPException(404, "unknown self file")
-    self_dir().mkdir(parents=True, exist_ok=True)
-    (self_dir() / f"{name}.md").write_text(body.content)
+    atomic_write(self_dir() / f"{name}.md", body.content)
     return {"ok": True}

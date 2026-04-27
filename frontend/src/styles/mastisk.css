@@ -1436,6 +1436,47 @@ a { color: inherit; }
   .settings-row { grid-template-columns: minmax(0, 1fr); }
 }
 
+/* ---------- vault files editor ---------- */
+.vault-files-pills {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  margin: 12px 0 18px;
+}
+.vault-files-pill {
+  display: flex; flex-direction: column; align-items: flex-start;
+  padding: 8px 14px; border-radius: 8px;
+  background: var(--bg-sunk); border: 1px solid var(--line);
+  font-family: var(--mono); cursor: pointer; transition: all 0.15s;
+  min-width: 110px;
+}
+.vault-files-pill:hover:not(:disabled) {
+  border-color: var(--fg-mute);
+  background: var(--bg-card);
+}
+.vault-files-pill.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.vault-files-pill:disabled { opacity: 0.5; cursor: not-allowed; }
+.vault-files-pill-name { font-size: 12px; font-weight: 500; }
+.vault-files-pill-meta { font-size: 10px; color: var(--fg-faint); margin-top: 2px; }
+.vault-files-pill.active .vault-files-pill-meta { color: var(--accent); opacity: 0.7; }
+
+.vault-files-textarea {
+  width: 100%;
+  font-family: var(--mono); font-size: 12px; line-height: 1.5;
+  padding: 10px 12px;
+  background: var(--bg-sunk); border: 1px solid var(--line); border-radius: 6px;
+  color: var(--fg); resize: vertical;
+}
+.vault-files-textarea:focus { outline: none; border-color: var(--accent); }
+.vault-files-textarea:disabled { opacity: 0.6; }
+
+.vault-files-footer {
+  display: flex; align-items: center; gap: 12px;
+  margin-top: 10px;
+}
+
 /* ---------- wiki-link hover preview ---------- */
 .wiki-hover-card {
   position: fixed;

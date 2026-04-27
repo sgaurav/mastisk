@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import type { SettingsBundle, SettingsPatch } from '../types';
+import { VaultFilesSection } from './VaultFilesSection';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -272,6 +273,8 @@ export function SettingsView() {
           </>
         )}
       </Section>
+
+      <VaultFilesSection />
 
       <Section title="Daily agent budgets">
         <p className="settings-section-hint">

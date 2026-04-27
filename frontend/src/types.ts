@@ -488,3 +488,10 @@ export interface SynthesisRunResponse {
 export interface PendingSynthesisResponse {
   runs: SynthesisRun[];
 }
+
+export interface VaultSelfFile {
+  name: string;
+  size: number;
+  mtime: number;
+  exists: boolean;
+}
