@@ -48,6 +48,7 @@ mastisk-backup-*.tar.gz
 # committed; the local override + runtime state should not)
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+.claude/worktrees/
 
 # macOS
 .DS_Store
