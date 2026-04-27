@@ -34,6 +34,10 @@ dependencies = [
   "python-slugify>=8.0",
   "aiosqlite>=0.20",
   "yt-dlp>=2025.1.15",
+  # curl_cffi gives yt-dlp browser-impersonation TLS fingerprints. Without it,
+  # YouTube quickly flags unauthenticated requests and rate-limits the IP for
+  # ~1h. yt-dlp auto-detects and uses curl_cffi when present.
+  "curl-cffi>=0.7",
   "pyyaml>=6.0",
   "tomli-w>=1.0",
 ]

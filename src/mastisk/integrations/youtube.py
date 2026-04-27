@@ -3,19 +3,53 @@
 Three entry points: metadata fetch, subtitle fetch (plain text), and audio
 download. All sync under the hood (yt-dlp is sync); callers `await` via
 `asyncio.to_thread` so the scheduler tick isn't blocked.
+
+Throttle: a module-level async lock + last-call timestamp ensures we never
+hit YouTube faster than ``_MIN_INTERVAL_SECONDS``. Bursts of yt-dlp calls
+(e.g. when Listener picks several queued transcribe jobs back-to-back) are
+the most common trigger for YouTube's bot-detection rate limit, which
+blocks the IP for ~1h. Spacing requests by a few seconds is enough to keep
+us under the radar without noticeably hurting end-to-end latency.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
 import re
+import time
 from pathlib import Path
 
 log = logging.getLogger("mastisk.youtube")
 
+_MIN_INTERVAL_SECONDS = 8.0
+_throttle_lock: asyncio.Lock | None = None
+_last_fetch_at: float = 0.0
+
+
+def _get_lock() -> asyncio.Lock:
+    """Lazy-init: asyncio.Lock binds to the running loop, but this module
+    can be imported before any loop exists."""
+    global _throttle_lock
+    if _throttle_lock is None:
+        _throttle_lock = asyncio.Lock()
+    return _throttle_lock
+
+
+async def _throttle() -> None:
+    """Sleep just long enough so consecutive yt-dlp calls are spaced out."""
+    global _last_fetch_at
+    async with _get_lock():
+        elapsed = time.monotonic() - _last_fetch_at
+        wait = _MIN_INTERVAL_SECONDS - elapsed
+        if wait > 0:
+            log.debug("youtube: throttling for %.1fs", wait)
+            await asyncio.sleep(wait)
+        _last_fetch_at = time.monotonic()
+
 
 async def fetch_metadata(url: str) -> dict:
     """Return normalized video metadata. Raises RuntimeError on failure."""
+    await _throttle()
     try:
         info = await asyncio.to_thread(_extract_info, url, False)
     except Exception as e:
@@ -40,6 +74,7 @@ async def fetch_subtitles(url: str, out_dir: Path) -> str | None:
     containing concatenated dedup'd lines. None if no subs available.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
+    await _throttle()
     try:
         vtt_path = await asyncio.to_thread(_download_subs, url, out_dir)
     except Exception as e:
@@ -57,6 +92,7 @@ async def fetch_subtitles(url: str, out_dir: Path) -> str | None:
 async def download_audio(url: str, out_dir: Path) -> Path:
     """Download best audio track, convert to m4a if needed. Returns path."""
     out_dir.mkdir(parents=True, exist_ok=True)
+    await _throttle()
     try:
         path = await asyncio.to_thread(_download_audio, url, out_dir)
     except Exception as e:

@@ -115,6 +115,9 @@ async def _yt_metadata(url: str) -> dict:
     which can take minutes for popular creators. We only need the channel/
     playlist-level fields (channel_id, title, count) — extract_flat='in_playlist'
     skips per-video metadata and returns in seconds.
+
+    Goes through the same throttle as Listener's video fetches so the probe
+    endpoint can't burst yt-dlp into a rate-limit cooldown.
     """
     def _run() -> dict:
         from yt_dlp import YoutubeDL
@@ -126,6 +129,7 @@ async def _yt_metadata(url: str) -> dict:
         with YoutubeDL(opts) as ydl:
             return ydl.extract_info(url, download=False) or {}
 
+    await yt_int._throttle()
     try:
         return await asyncio.to_thread(_run)
     except Exception as e:  # yt-dlp raises a wide range of exceptions
