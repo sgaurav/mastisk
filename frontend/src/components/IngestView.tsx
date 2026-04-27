@@ -4,7 +4,7 @@ import type { Feed } from '../types';
 
 interface Toast { text: string; tone: 'ok' | 'err' | 'info' }
 
-interface ListenResult { jobId: number; kind: string; message: string }
+interface ListenResult { jobId: number | null; kind: string; message: string }
 
 export function IngestView() {
   const [feeds, setFeeds] = useState<Feed[] | null>(null);
@@ -135,14 +135,14 @@ export function IngestView() {
 
       <div className="view-h" style={{marginTop:48}}>Paste a link</div>
       <p className="listen-hint">
-        YouTube, podcast RSS feeds, or direct audio URLs. Spotify episodes aren't supported (DRM).
+        Blog posts, YouTube videos, podcasts, or direct audio URLs. Spotify isn't supported (DRM).
       </p>
 
       <form onSubmit={onListen} className="listen-row">
         <input
           type="url"
           required
-          placeholder="https://www.youtube.com/watch?v=…"
+          placeholder="https://stratechery.com/… or youtube.com/watch?v=…"
           value={listenUrl}
           onChange={(e) => { setListenUrl(e.target.value); if (listenErr) setListenErr(null); }}
           className="listen-input"
@@ -158,9 +158,9 @@ export function IngestView() {
 
       {listenOk && (
         <div className="listen-ok">
-          <span className="listen-ok-id">#{listenOk.jobId}</span>
+          {listenOk.jobId != null && <span className="listen-ok-id">#{listenOk.jobId}</span>}
           <span className="listen-ok-copy">
-            queued as <em>{listenOk.kind}</em>. {listenOk.message || 'Listener will pick it up shortly.'}
+            {listenOk.message || `queued as ${listenOk.kind}.`}
           </span>
         </div>
       )}
