@@ -56,7 +56,7 @@ export const api = {
       body: JSON.stringify({ url }),
     }),
 
-  listen: async (url: string): Promise<{ job_id: number; kind: string; message: string }> => {
+  listen: async (url: string): Promise<{ job_id: number | null; kind: string; message: string; source_id?: string }> => {
     const r = await fetch(`${BASE}/listen`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -70,7 +70,7 @@ export const api = {
       } catch { /* ignore parse errors, fall back to status code */ }
       throw new Error(detail);
     }
-    return r.json() as Promise<{ job_id: number; kind: string; message: string }>;
+    return r.json() as Promise<{ job_id: number | null; kind: string; message: string; source_id?: string }>;
   },
 
   jobs: () => j<{ jobs: Job[] }>(`${BASE}/jobs`),

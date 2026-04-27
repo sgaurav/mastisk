@@ -9,6 +9,7 @@ interface Props {
 }
 
 interface Toast { text: string; tone: 'ok' | 'err' | 'info' }
+interface ListenResult { jobId: number | null; kind: string; message: string }
 type Filter = 'all' | SubscriptionKind;
 
 export function SubscriptionsView({ onNavigate, onAddSubscription, reloadKey }: Props) {
@@ -16,6 +17,32 @@ export function SubscriptionsView({ onNavigate, onAddSubscription, reloadKey }: 
   const [err, setErr] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>('all');
   const [toast, setToast] = useState<Toast | null>(null);
+
+  // One-shot URL ingestion (the "Paste a link" form). Lives here so users
+  // have a single home for "things that feed the wiki" — both recurring
+  // (the list above) and one-off (this form).
+  const [listenUrl, setListenUrl] = useState('');
+  const [listenBusy, setListenBusy] = useState(false);
+  const [listenOk, setListenOk] = useState<ListenResult | null>(null);
+  const [listenErr, setListenErr] = useState<string | null>(null);
+
+  const onListen = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const u = listenUrl.trim();
+    if (!u) return;
+    setListenBusy(true);
+    setListenErr(null);
+    setListenOk(null);
+    try {
+      const res = await api.listen(u);
+      setListenUrl('');
+      setListenOk({ jobId: res.job_id, kind: res.kind, message: res.message });
+    } catch (err) {
+      setListenErr(err instanceof Error ? err.message : String(err));
+    } finally {
+      setListenBusy(false);
+    }
+  };
 
   const reload = async () => {
     try {
@@ -122,6 +149,42 @@ export function SubscriptionsView({ onNavigate, onAddSubscription, reloadKey }: 
             />
           ))}
         </div>
+      )}
+
+      <div className="view-h" style={{marginTop:48}}>Paste a link</div>
+      <p className="listen-hint">
+        Blog posts, YouTube videos, podcasts, or direct audio URLs. Spotify isn't supported (DRM).
+      </p>
+
+      <form onSubmit={onListen} className="listen-row">
+        <input
+          type="url"
+          required
+          placeholder="https://stratechery.com/… or youtube.com/watch?v=…"
+          value={listenUrl}
+          onChange={(e) => { setListenUrl(e.target.value); if (listenErr) setListenErr(null); }}
+          className="listen-input"
+        />
+        <button
+          type="submit"
+          disabled={listenBusy || !listenUrl.trim()}
+          style={btnPrimary(listenBusy || !listenUrl.trim())}
+        >
+          {listenBusy ? 'queuing…' : 'Queue'}
+        </button>
+      </form>
+
+      {listenOk && (
+        <div className="listen-ok">
+          {listenOk.jobId != null && <span className="listen-ok-id">#{listenOk.jobId}</span>}
+          <span className="listen-ok-copy">
+            {listenOk.message || `queued as ${listenOk.kind}.`}
+          </span>
+        </div>
+      )}
+
+      {listenErr && (
+        <div className="listen-err">{listenErr}</div>
       )}
 
       {toast && (

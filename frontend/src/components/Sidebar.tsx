@@ -185,7 +185,7 @@ export function Sidebar({ vault, pinned, user, currentView, currentArticle, onNa
         );
       })()}
       {user && (
-        <div className="user-pill" onClick={() => onNavigate('ingest')} role="button" title="Sources & ingest">
+        <div className="user-pill" onClick={() => onNavigate('subscriptions')} role="button" title="Subscriptions">
           <div className="user-avatar">{user.initials}</div>
           <div className="user-meta">
             <div className="user-name">{user.name}</div>

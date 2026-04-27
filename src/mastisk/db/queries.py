@@ -311,7 +311,10 @@ def vault_tree(conn: sqlite3.Connection) -> list[dict]:
         folder("Synthesis", "Synthesis", "✦"),
         {"kind": "section", "label": "System"},
         {"kind": "page", "id": "graph", "label": "Graph view", "glyph": "✱"},
-        {"kind": "page", "id": "ingest", "label": "Sources & ingest", "glyph": "↧"},
+        # 'ingest' (Sources & ingest) is intentionally hidden from the sidebar:
+        # Subscriptions is now the single home for adding feeds and pasting
+        # one-off links. The /ingest route is left registered for back-compat
+        # and may be removed in a later cleanup.
     ]
 
 
