@@ -62,6 +62,25 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     )
     _add_column_if_missing(conn, "repos", "source_type", "TEXT NOT NULL DEFAULT 'github'")
     _add_column_if_missing(conn, "repos", "local_path", "TEXT")
+    _migrate_rss_feeds_to_subscriptions(conn)
+
+
+def _migrate_rss_feeds_to_subscriptions(conn: sqlite3.Connection) -> None:
+    """Backfill the subscriptions table from rss_feeds for upgrade-in-place.
+    Idempotent — only inserts rows whose URL isn't already in subscriptions.
+    The rss_feeds table is left intact for one release as a fallback in case
+    a downgrade is needed."""
+    has_rss = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='rss_feeds'"
+    ).fetchone()
+    if not has_rss:
+        return
+    conn.execute(
+        """INSERT OR IGNORE INTO subscriptions
+              (url, kind, source_url, title, enabled, last_fetched, last_etag, last_modified, added_at)
+           SELECT url, 'rss', url, title, enabled, last_fetched, last_etag, last_modified, added_at
+             FROM rss_feeds"""
+    )
 
 
 @contextmanager
@@ -322,7 +341,7 @@ def user_info(conn: sqlite3.Connection) -> dict:
 
     pages   = conn.execute("SELECT COUNT(*) AS n FROM articles").fetchone()["n"]
     sources = conn.execute("SELECT COUNT(*) AS n FROM sources").fetchone()["n"]
-    feeds   = conn.execute("SELECT COUNT(*) AS n FROM rss_feeds WHERE enabled=1").fetchone()["n"]
+    feeds   = conn.execute("SELECT COUNT(*) AS n FROM subscriptions WHERE kind='rss' AND enabled=1").fetchone()["n"]
 
     initials = "".join(w[0] for w in name.split()[:2]).upper() or "—"
 
@@ -1536,6 +1555,140 @@ def delete_blog_post_sources(
         (blog_post_id,),
     )
     return cur.rowcount or 0
+
+
+# ─────────────────────────────── Subscriptions ───────────────────────────────
+
+def list_subscriptions(conn: sqlite3.Connection) -> list[dict]:
+    """All subscriptions, newest-added first. Includes per-row item counts
+    in the last 24h via a correlated subquery against jobs.payload_json."""
+    rows = conn.execute(
+        """SELECT s.url, s.kind, s.source_url, s.title, s.enabled,
+                  s.last_fetched, s.last_etag, s.last_modified, s.last_seen_guid,
+                  s.backfill_remaining, s.max_per_poll, s.bypass_interest_gate,
+                  s.last_error, s.added_at,
+                  (SELECT COUNT(*) FROM jobs
+                     WHERE jobs.payload_json LIKE '%' || s.url || '%'
+                       AND jobs.created_at >= datetime('now', '-1 day')) AS items_24h
+             FROM subscriptions s
+            ORDER BY s.added_at DESC"""
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_subscription(conn: sqlite3.Connection, url: str) -> dict | None:
+    row = conn.execute("SELECT * FROM subscriptions WHERE url = ?", (url,)).fetchone()
+    return dict(row) if row else None
+
+
+def add_subscription(
+    conn: sqlite3.Connection,
+    *,
+    url: str,
+    kind: str,
+    source_url: str,
+    title: str,
+    backfill: int = 3,
+    bypass_interest_gate: bool = False,
+) -> dict:
+    """Insert a subscription. Returns the inserted row. Idempotent on URL."""
+    conn.execute(
+        """INSERT OR REPLACE INTO subscriptions
+              (url, kind, source_url, title, enabled, backfill_remaining,
+               bypass_interest_gate)
+            VALUES (?, ?, ?, ?, 1, ?, ?)""",
+        (url, kind, source_url, title, int(backfill), 1 if bypass_interest_gate else 0),
+    )
+    out = get_subscription(conn, url)
+    assert out is not None
+    return out
+
+
+def remove_subscription(conn: sqlite3.Connection, url: str) -> bool:
+    cur = conn.execute("DELETE FROM subscriptions WHERE url = ?", (url,))
+    return (cur.rowcount or 0) > 0
+
+
+def toggle_subscription(conn: sqlite3.Connection, url: str) -> dict | None:
+    conn.execute("UPDATE subscriptions SET enabled = 1 - enabled WHERE url = ?", (url,))
+    return get_subscription(conn, url)
+
+
+def update_subscription(
+    conn: sqlite3.Connection,
+    url: str,
+    *,
+    title: str | None = None,
+    max_per_poll: int | None = None,
+    bypass_interest_gate: bool | None = None,
+) -> dict | None:
+    sets = []
+    params: list[Any] = []
+    if title is not None:
+        sets.append("title = ?")
+        params.append(title)
+    if max_per_poll is not None:
+        sets.append("max_per_poll = ?")
+        params.append(int(max_per_poll))
+    if bypass_interest_gate is not None:
+        sets.append("bypass_interest_gate = ?")
+        params.append(1 if bypass_interest_gate else 0)
+    if not sets:
+        return get_subscription(conn, url)
+    params.append(url)
+    conn.execute(
+        f"UPDATE subscriptions SET {', '.join(sets)} WHERE url = ?",
+        params,
+    )
+    return get_subscription(conn, url)
+
+
+def advance_subscription_pointer(
+    conn: sqlite3.Connection, url: str, last_seen_guid: str | None,
+    *, decrement_backfill: int = 0,
+) -> None:
+    """Move the diff pointer forward after a successful poll."""
+    conn.execute(
+        """UPDATE subscriptions
+              SET last_seen_guid = COALESCE(?, last_seen_guid),
+                  backfill_remaining = MAX(0, backfill_remaining - ?),
+                  last_error = NULL
+            WHERE url = ?""",
+        (last_seen_guid, int(decrement_backfill), url),
+    )
+
+
+def record_poll_result(
+    conn: sqlite3.Connection, url: str,
+    *, etag: str | None, last_modified: str | None, error: str | None = None,
+) -> None:
+    conn.execute(
+        """UPDATE subscriptions
+              SET last_fetched = CURRENT_TIMESTAMP,
+                  last_etag = COALESCE(?, last_etag),
+                  last_modified = COALESCE(?, last_modified),
+                  last_error = ?
+            WHERE url = ?""",
+        (etag, last_modified, error, url),
+    )
+
+
+def recent_items_for_subscription(
+    conn: sqlite3.Connection, url: str, limit: int = 20,
+) -> list[dict]:
+    """Recent jobs whose payload references this subscription_url, joined to
+    sources/articles when available."""
+    pattern = '%' + url + '%'
+    rows = conn.execute(
+        """SELECT j.id, j.agent, j.kind, j.status, j.created_at, j.error,
+                  j.payload_json
+             FROM jobs j
+            WHERE j.payload_json LIKE ?
+            ORDER BY j.created_at DESC
+            LIMIT ?""",
+        (pattern, int(limit)),
+    ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def reclaim_running_blog_posts(

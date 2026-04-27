@@ -23,7 +23,7 @@ def stats():
             "signals":          conn.execute("SELECT COUNT(*) AS n FROM signals").fetchone()["n"],
         }
         feeds = conn.execute(
-            "SELECT COUNT(*) AS n FROM rss_feeds WHERE enabled=1"
+            "SELECT COUNT(*) AS n FROM subscriptions WHERE kind='rss' AND enabled=1"
         ).fetchone()["n"]
         jobs_by_status = {
             r["status"]: r["n"] for r in conn.execute(
@@ -31,7 +31,7 @@ def stats():
             )
         }
         last_feed_fetch = conn.execute(
-            "SELECT MAX(last_fetched) AS t FROM rss_feeds WHERE enabled=1"
+            "SELECT MAX(last_fetched) AS t FROM subscriptions WHERE kind='rss' AND enabled=1"
         ).fetchone()["t"]
         last_agent_activity = conn.execute(
             "SELECT MAX(ts) AS t FROM feed"

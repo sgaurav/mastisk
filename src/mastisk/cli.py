@@ -108,7 +108,7 @@ def status(
             "signals":      conn.execute("SELECT COUNT(*) AS n FROM signals").fetchone()["n"],
         }
         feeds = [dict(r) for r in conn.execute(
-            "SELECT url, title, last_fetched, enabled FROM rss_feeds ORDER BY added_at DESC"
+            "SELECT url, title, last_fetched, enabled FROM subscriptions WHERE kind='rss' ORDER BY added_at DESC"
         )]
         jobs_by = {
             r["status"]: r["n"] for r in conn.execute(
@@ -450,7 +450,7 @@ def reset(
         "sources", "articles",
     ]
     if not keep_feeds:
-        tables.append("rss_feeds")
+        tables.append("subscriptions")
     with connect() as conn:
         for t in tables:
             conn.execute(f"DELETE FROM {t}")
@@ -478,15 +478,102 @@ def _seed_demo() -> None:
 
 @app.command(name="add-feed")
 def add_feed(url: str, title: Optional[str] = typer.Option(None, "--title", "-t")):
-    """Subscribe to an RSS feed."""
+    """Subscribe to an RSS feed (alias for `subscribe` with kind='rss')."""
     from mastisk.db.queries import connect
     _ensure_db()
     with connect() as conn:
         conn.execute(
-            "INSERT OR REPLACE INTO rss_feeds (url, title, enabled) VALUES (?, ?, 1)",
-            (url, title or url),
+            """INSERT OR REPLACE INTO subscriptions (url, kind, source_url, title, enabled)
+               VALUES (?, 'rss', ?, ?, 1)""",
+            (url, url, title or url),
         )
     console.print(f"[green]subscribed[/green] {url}")
+
+
+@app.command(name="subscribe")
+def subscribe(
+    url: str,
+    title: Optional[str] = typer.Option(None, "--title", "-t"),
+    backfill: int = typer.Option(3, "--backfill", help="Process the most recent N items on first poll"),
+    no_bypass_filter: bool = typer.Option(False, "--no-bypass-filter", help="Apply interest gate even for YouTube/podcast"),
+):
+    """Subscribe to any URL — RSS, YouTube channel/playlist, podcast, Apple Podcasts."""
+    import asyncio
+    from mastisk.db import queries as q
+    from mastisk.db.queries import connect
+    from mastisk.integrations.subscriptions import ResolveError, resolve
+
+    _ensure_db()
+    try:
+        r = asyncio.run(resolve(url))
+    except ResolveError as e:
+        console.print(f"[red]could not resolve URL:[/red] {e}")
+        raise typer.Exit(1)
+
+    bypass = (r.kind in ("youtube", "podcast")) and not no_bypass_filter
+    with connect() as conn:
+        q.add_subscription(
+            conn,
+            url=r.url,
+            kind=r.kind,
+            source_url=r.source_url,
+            title=(title or r.title),
+            backfill=backfill,
+            bypass_interest_gate=bypass,
+        )
+    label = title or r.title
+    console.print(f"[green]subscribed[/green] [{r.kind}] {label}")
+    console.print(f"  feed: {r.url}")
+    if r.item_count is not None:
+        console.print(f"  items detected: {r.item_count}")
+
+
+@app.command(name="subscriptions")
+def list_subs():
+    """List all subscriptions."""
+    from mastisk.db import queries as q
+    from mastisk.db.queries import connect
+    _ensure_db()
+    with connect() as conn:
+        rows = q.list_subscriptions(conn)
+    if not rows:
+        console.print("[dim](no subscriptions yet — try `mastisk subscribe <url>`)[/dim]")
+        return
+    tbl = Table(show_header=True, header_style="bold")
+    tbl.add_column("kind")
+    tbl.add_column("title")
+    tbl.add_column("last poll", style="dim")
+    tbl.add_column("status", style="dim")
+    for r in rows:
+        status = "live" if r["enabled"] else "paused"
+        if r.get("last_error"):
+            status = "error"
+        tbl.add_row(r["kind"], (r["title"] or "")[:40], r["last_fetched"] or "—", status)
+    console.print(tbl)
+
+
+@app.command(name="unsubscribe")
+def unsubscribe(url: str):
+    """Remove a subscription by URL."""
+    from mastisk.db import queries as q
+    from mastisk.db.queries import connect
+    _ensure_db()
+    with connect() as conn:
+        ok = q.remove_subscription(conn, url)
+    if ok:
+        console.print(f"[green]unsubscribed[/green] {url}")
+    else:
+        console.print(f"[dim]no subscription matched {url}[/dim]")
+
+
+@app.command(name="poll-now")
+def poll_now(url: str):
+    """Force a single subscription to poll immediately (sync)."""
+    import asyncio
+    from mastisk.agents.scout import Scout
+    _ensure_db()
+    asyncio.run(Scout()._fetch_feed(url))
+    console.print(f"[green]polled[/green] {url}")
 
 
 @app.command(name="add-youtube")

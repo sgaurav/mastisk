@@ -16,14 +16,14 @@ class FeedIn(BaseModel):
 
 @router.get("/feeds")
 def list_feeds():
+    """Compatibility shim — returns RSS-kind subscriptions in the legacy shape."""
     with connect() as conn:
         rows = [dict(r) for r in conn.execute(
             """SELECT url, title, last_fetched, last_etag, last_modified, enabled, added_at,
                       (SELECT COUNT(*) FROM sources
-                         WHERE sources.url LIKE '%' || rss_feeds.url || '%' OR 0=1) AS items_ever
-               FROM rss_feeds ORDER BY added_at DESC"""
+                         WHERE sources.url LIKE '%' || subscriptions.url || '%' OR 0=1) AS items_ever
+               FROM subscriptions WHERE kind='rss' ORDER BY added_at DESC"""
         )]
-    # items_ever is a rough count; useful enough for dashboard
     for r in rows:
         r["enabled"] = bool(r["enabled"])
     return {"feeds": rows}
@@ -35,12 +35,15 @@ def add_feed(feed: FeedIn):
     if not url.startswith(("http://", "https://")):
         raise HTTPException(400, "url must start with http:// or https://")
     with connect() as conn:
+        # Treat the legacy /feeds POST as a kind='rss' subscribe — preserves
+        # back-compat for any existing tooling. New code should call POST /subscriptions.
         conn.execute(
-            "INSERT OR IGNORE INTO rss_feeds (url, title) VALUES (?, ?)",
-            (url, feed.title or url),
+            """INSERT OR IGNORE INTO subscriptions (url, kind, source_url, title)
+               VALUES (?, 'rss', ?, ?)""",
+            (url, url, feed.title or url),
         )
         row = conn.execute(
-            "SELECT url, title, last_fetched, enabled, added_at FROM rss_feeds WHERE url = ?",
+            "SELECT url, title, last_fetched, enabled, added_at FROM subscriptions WHERE url = ?",
             (url,),
         ).fetchone()
     return {"ok": True, "feed": dict(row)}
@@ -49,7 +52,7 @@ def add_feed(feed: FeedIn):
 @router.delete("/feeds")
 def remove_feed(url: str):
     with connect() as conn:
-        conn.execute("DELETE FROM rss_feeds WHERE url = ?", (url,))
+        conn.execute("DELETE FROM subscriptions WHERE url = ? AND kind='rss'", (url,))
     return {"ok": True}
 
 
@@ -57,21 +60,21 @@ def remove_feed(url: str):
 def toggle_feed(feed: FeedIn):
     with connect() as conn:
         conn.execute(
-            "UPDATE rss_feeds SET enabled = 1 - enabled WHERE url = ?", (feed.url,)
+            "UPDATE subscriptions SET enabled = 1 - enabled WHERE url = ? AND kind='rss'",
+            (feed.url,),
         )
     return {"ok": True}
 
 
 @router.post("/feeds/fetch")
 async def fetch_now(feed: FeedIn, background: BackgroundTasks):
-    """Run Scout against a specific feed right now (background task).
-
-    The UI can call this when the user clicks "fetch now" on a feed row.
-    """
+    """Run Scout against a specific feed right now (background task)."""
     from mastisk.agents.scout import Scout
 
     with connect() as conn:
-        exists = conn.execute("SELECT 1 FROM rss_feeds WHERE url = ?", (feed.url,)).fetchone()
+        exists = conn.execute(
+            "SELECT 1 FROM subscriptions WHERE url = ?", (feed.url,)
+        ).fetchone()
         if not exists:
             raise HTTPException(404, "feed not subscribed")
 
@@ -154,7 +157,7 @@ def list_jobs(limit: int = 50):
             elif r["agent"] == "scout" and payload.get("url"):
                 url = payload["url"]
                 feed = conn.execute(
-                    "SELECT title FROM rss_feeds WHERE url=?", (url,),
+                    "SELECT title FROM subscriptions WHERE url=?", (url,),
                 ).fetchone()
                 title = (feed["title"] if feed else None) or _hostname(url) or url
                 subtitle = _hostname(url)

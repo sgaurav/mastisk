@@ -114,6 +114,24 @@ CREATE TABLE IF NOT EXISTS rss_feeds (
   added_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS subscriptions (
+  url TEXT PRIMARY KEY,                     -- canonical RSS URL we poll
+  kind TEXT NOT NULL,                       -- 'rss' | 'youtube' | 'podcast'
+  source_url TEXT,                          -- what the user pasted (display only)
+  title TEXT,
+  enabled INTEGER DEFAULT 1,
+  last_fetched DATETIME,
+  last_etag TEXT,
+  last_modified TEXT,
+  last_seen_guid TEXT,                      -- newest entry GUID/videoId we processed
+  backfill_remaining INTEGER DEFAULT 0,     -- decremented as older items get queued
+  max_per_poll INTEGER DEFAULT 5,           -- cap per tick — drains noisy feeds gradually
+  bypass_interest_gate INTEGER DEFAULT 0,   -- 1 = always process, ignore interests.md
+  last_error TEXT,
+  added_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_kind_enabled ON subscriptions(kind, enabled);
+
 CREATE TABLE IF NOT EXISTS signals (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   ts DATETIME DEFAULT CURRENT_TIMESTAMP,

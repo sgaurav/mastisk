@@ -16,7 +16,7 @@ from mastisk.routes import (
     articles, artifacts_route, ask, blog_route, digest_route, feed_route,
     graph_route, listen_route, notes, open_questions_route, repos_route,
     roundtable_route, search, settings_route, signals_route, sources_route,
-    stats_route, synthesis_route, vault_route,
+    stats_route, subscriptions_route, synthesis_route, vault_route,
 )
 
 log = logging.getLogger("mastisk.app")
@@ -64,6 +64,7 @@ def create_app() -> FastAPI:
     app.include_router(search.router, prefix="/api")
     app.include_router(signals_route.router, prefix="/api")
     app.include_router(sources_route.router, prefix="/api")
+    app.include_router(subscriptions_route.router, prefix="/api")
     app.include_router(vault_route.router, prefix="/api")
     app.include_router(graph_route.router, prefix="/api")
     app.include_router(stats_route.router, prefix="/api")
