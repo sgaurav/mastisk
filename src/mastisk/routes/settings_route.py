@@ -52,6 +52,12 @@ class BudgetIn(BaseModel):
     synthesizer: int = Field(ge=0, le=100000)
 
 
+class DiscoverIn(BaseModel):
+    cadence_hours: int | None = Field(default=None, ge=1, le=8760)  # 1h to 1 year
+    min_confluence: int | None = Field(default=None, ge=1, le=10)
+    llm_judge_enabled: bool | None = None
+
+
 class SettingsIn(BaseModel):
     claude_cmd: str | None = None
 
@@ -67,6 +73,8 @@ class SettingsIn(BaseModel):
     summarize_model_heavy: str | None = None
 
     budget: BudgetIn | None = None
+
+    discover: DiscoverIn | None = None
 
 
 @router.get("/settings")
@@ -90,6 +98,11 @@ def read_settings():
                 "compiler": s.budget.compiler,
                 "linter": s.budget.linter,
                 "synthesizer": s.budget.synthesizer,
+            },
+            "discover": {
+                "cadence_hours": s.discover.cadence_hours,
+                "min_confluence": s.discover.min_confluence,
+                "llm_judge_enabled": s.discover.llm_judge_enabled,
             },
         },
         "model_roles": MODEL_ROLES,
@@ -122,6 +135,9 @@ def write_settings(body: SettingsIn):
 
     if "budget" in patch:
         existing["budget"] = {**existing.get("budget", {}), **patch.pop("budget")}
+
+    if "discover" in patch:
+        existing["discover"] = {**existing.get("discover", {}), **patch.pop("discover")}
 
     existing.update(patch)
 
@@ -172,6 +188,12 @@ def _toml_scalar(v: Any) -> str:
         return json.dumps(v, ensure_ascii=False)
     if isinstance(v, list):
         return "[" + ", ".join(_toml_scalar(x) for x in v) + "]"
+    if isinstance(v, dict):
+        # Inline table — for nested dicts inside an existing [section]
+        # (e.g. roundtable.perspective_models). TOML grammar:
+        # `{ key1 = val1, key2 = val2 }`
+        body = ", ".join(f"{k} = {_toml_scalar(val)}" for k, val in v.items())
+        return "{ " + body + " }"
     raise TypeError(f"unsupported config value type: {type(v).__name__}")
 
 

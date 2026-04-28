@@ -75,6 +75,22 @@ class GithubSettings(BaseSettings):
     ideate_model: str = "claude-sonnet-4-6"
 
 
+class DiscoverSettings(BaseSettings):
+    """Config for the Curator agent (Discover feature). See
+    docs/superpowers/specs (forthcoming) for the design rationale."""
+    # Cadence in hours. 168 = weekly (default), 24 = daily.
+    cadence_hours: int = 168
+    # Min number of distinct trusted-source endorsements before a candidate
+    # surfaces. 0 = no threshold (anything with ≥1 endorsement). Defaults to 2.
+    min_confluence: int = 2
+    # Run the Claude relevance pass over the survivor set. ON by default; the
+    # user can turn it off in Settings if they don't want to spend a Claude
+    # call per cycle.
+    llm_judge_enabled: bool = True
+    # Per-cycle hard cap on number of discoveries written to the table.
+    max_per_cycle: int = 15
+
+
 class BlogSettings(BaseSettings):
     """Config for the blog-writer subsystem.
     See docs/superpowers/specs/2026-04-22-blog-writer-design.md §12.
@@ -135,6 +151,8 @@ class Settings(BaseSettings):
     github: GithubSettings = Field(default_factory=GithubSettings)
 
     blog: BlogSettings = Field(default_factory=BlogSettings)
+
+    discover: DiscoverSettings = Field(default_factory=DiscoverSettings)
 
     # RSS feeds to subscribe (managed via CLI, stored in DB — this is just the initial seed)
     seed_feeds: list[str] = Field(default_factory=list)

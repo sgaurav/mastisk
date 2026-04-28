@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
-import type { SettingsBundle, SettingsPatch } from '../types';
+import type { DiscoverValues, DiscoveryBlocklistItem, SettingsBundle, SettingsPatch } from '../types';
 import { VaultFilesSection } from './VaultFilesSection';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
@@ -276,6 +276,12 @@ export function SettingsView() {
 
       <VaultFilesSection />
 
+      <DiscoverySection
+        values={v.discover}
+        draft={draft.discover}
+        setDraft={(patch) => set({ discover: { ...(draft.discover ?? {}), ...patch } })}
+      />
+
       <Section title="Daily agent budgets">
         <p className="settings-section-hint">
           Caps on how many items each agent will act on per day. Stops a chatty feed from burning through cloud calls.
@@ -357,6 +363,146 @@ function NumberField({
     </div>
   );
 }
+
+function Select<T extends string | number>({
+  label, hint, value, options, onChange,
+}: {
+  label: string;
+  hint?: string;
+  value: T;
+  options: { value: T; label: string }[];
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div className="settings-row">
+      <label className="settings-label">
+        <div className="k">{label}</div>
+        {hint && <div className="h">{hint}</div>}
+      </label>
+      <div className="settings-ctl">
+        <select
+          value={String(value)}
+          onChange={(e) => {
+            const raw = e.target.value;
+            const match = options.find((o) => String(o.value) === raw);
+            if (match) onChange(match.value);
+          }}
+          style={{
+            padding: '6px 10px', borderRadius: 4,
+            background: 'var(--bg-card)', color: 'var(--fg)',
+            border: '1px solid var(--line)', fontSize: 13,
+            fontFamily: 'var(--mono)',
+          }}
+        >
+          {options.map((o) => (
+            <option key={String(o.value)} value={String(o.value)}>{o.label}</option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+}
+
+
+function DiscoverySection({
+  values, draft, setDraft,
+}: {
+  values: DiscoverValues;
+  draft: Partial<DiscoverValues> | undefined;
+  setDraft: (patch: Partial<DiscoverValues>) => void;
+}) {
+  const cur = <K extends keyof DiscoverValues>(k: K) =>
+    (draft?.[k] ?? values[k]) as DiscoverValues[K];
+
+  const [blocklist, setBlocklist] = useState<DiscoveryBlocklistItem[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.discover.blocklist().then((d) => setBlocklist(d.blocklist)).catch(() => setBlocklist([]));
+  }, []);
+
+  const onUnblock = async (domain: string) => {
+    setBusy(domain);
+    try {
+      await api.discover.unblock(domain);
+      const d = await api.discover.blocklist();
+      setBlocklist(d.blocklist);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <Section title="Discovery">
+      <p className="settings-section-hint">
+        Curator surfaces sources outside your subscriptions that your trusted writers keep pointing at.
+        Pure mechanical signal aggregation; LLM only as a final tie-breaker. Force a cycle now via{' '}
+        <code style={{fontFamily:'var(--mono)',fontSize:12,background:'var(--bg-sunk)',padding:'1px 6px',borderRadius:4}}>mastisk discover-now</code>.
+      </p>
+
+      <Select
+        label="Cadence"
+        hint="how often the Curator runs"
+        value={cur('cadence_hours')}
+        options={[
+          { value: 24, label: 'Daily' },
+          { value: 168, label: 'Weekly' },
+        ]}
+        onChange={(v) => setDraft({ cadence_hours: v })}
+      />
+
+      <Select
+        label="Confluence threshold"
+        hint="min distinct trusted-source endorsements before surfacing"
+        value={cur('min_confluence')}
+        options={[
+          { value: 1, label: 'Off (≥1)' },
+          { value: 2, label: '2' },
+          { value: 3, label: '3' },
+        ]}
+        onChange={(v) => setDraft({ min_confluence: v })}
+      />
+
+      <Toggle
+        label="LLM judge"
+        hint="run a Claude relevance pass over the survivor set each cycle (1 call per cycle)"
+        value={cur('llm_judge_enabled')}
+        onChange={(v) => setDraft({ llm_judge_enabled: v })}
+      />
+
+      <div className="settings-row" style={{alignItems:'flex-start'}}>
+        <label className="settings-label">
+          <div className="k">Blocked domains</div>
+          <div className="h">domains the Curator will never re-surface</div>
+        </label>
+        <div className="settings-ctl" style={{display:'flex',flexDirection:'column',gap:6,alignItems:'stretch'}}>
+          {blocklist === null && <span style={{fontFamily:'var(--mono)',fontSize:11,color:'var(--fg-faint)'}}>loading…</span>}
+          {blocklist !== null && blocklist.length === 0 && (
+            <span style={{fontFamily:'var(--serif)',fontSize:13,color:'var(--fg-mute)'}}>(none)</span>
+          )}
+          {blocklist?.map((b) => (
+            <div key={b.domain} style={{display:'flex',alignItems:'center',gap:8,padding:'4px 0',borderBottom:'1px solid var(--line-soft)'}}>
+              <span style={{flex:1,fontFamily:'var(--mono)',fontSize:12}}>{b.domain}</span>
+              {b.reason && <span style={{fontFamily:'var(--mono)',fontSize:10,color:'var(--fg-faint)'}}>{b.reason}</span>}
+              <button
+                onClick={() => void onUnblock(b.domain)}
+                disabled={busy === b.domain}
+                style={{
+                  padding:'4px 10px',borderRadius:4,background:'transparent',
+                  color:'var(--fg-mute)',border:'1px solid var(--line)',
+                  fontSize:11,fontFamily:'var(--mono)',cursor:'pointer',
+                }}
+              >
+                {busy === b.domain ? '…' : 'unblock'}
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Section>
+  );
+}
+
 
 function Toggle({
   label, hint, value, onChange,

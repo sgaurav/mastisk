@@ -33,6 +33,7 @@ import { AddRepoModal } from './components/AddRepoModal';
 import { SubscriptionsView } from './components/SubscriptionsView';
 import { SubscriptionDetailView } from './components/SubscriptionDetailView';
 import { AddSubscriptionModal } from './components/AddSubscriptionModal';
+import { DiscoverView } from './components/DiscoverView';
 import { BlogListView } from './components/BlogListView';
 import { BlogView } from './components/BlogView';
 import { BlogCreationModal } from './components/BlogCreationModal';
@@ -222,6 +223,9 @@ export function App() {
         )}
         {view === 'subscription' && route.subscriptionUrl && (
           <SubscriptionDetailView url={route.subscriptionUrl} onNavigate={navigate}/>
+        )}
+        {view === 'discover' && (
+          <DiscoverView onNavigate={navigate} reloadKey={subsReloadKey}/>
         )}
         {view === 'blog' && (
           <BlogListView

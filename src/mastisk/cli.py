@@ -576,6 +576,16 @@ def poll_now(url: str):
     console.print(f"[green]polled[/green] {url}")
 
 
+@app.command(name="discover-now")
+def discover_now():
+    """Run a Curator (Discover) cycle immediately, ignoring the weekly gate."""
+    import asyncio
+    from mastisk.agents.curator import Curator
+    _ensure_db()
+    asyncio.run(Curator()._cycle(force=True))
+    console.print("[green]curator cycle complete[/green]")
+
+
 @app.command(name="add-youtube")
 def add_youtube(url: str):
     """Queue a YouTube URL for the Listener agent."""

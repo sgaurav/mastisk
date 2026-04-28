@@ -1,6 +1,6 @@
 import type {
   Article, ArticlePreview, Artifact, ArtifactKind, AskResponse, BlogPostDetail,
-  BlogPostSummary, Digest, DigestAudit, Feed,
+  BlogPostSummary, Digest, DigestAudit, Discovery, DiscoveryBlocklistItem, Feed,
   FeedTick, AgentInfo, GraphData, Job, Note, OpenQuestionsResponse, PendingSynthesisResponse,
   PinnedItem, RepoDetail, RepoIdeasResponse, RepoSummary, Roundtable, RoundtableSummary, SettingsBundle, SettingsPatch,
   Subscription, SubscriptionDetail, SubscriptionResolved,
@@ -257,6 +257,28 @@ export const api = {
           body: JSON.stringify(patch),
         },
       ),
+  },
+
+  discover: {
+    list: (status: string = 'open') =>
+      j<{ discoveries: Discovery[]; open_count: number }>(`${BASE}/discoveries?status=${status}`),
+    accept: (id: number) =>
+      j<{ ok: boolean; subscribed_url: string }>(`${BASE}/discoveries/${id}/accept`, { method: 'POST' }),
+    save: (id: number) =>
+      j<{ ok: boolean; source_id: string }>(`${BASE}/discoveries/${id}/save`, { method: 'POST' }),
+    dismiss: (id: number) =>
+      j<{ ok: boolean }>(`${BASE}/discoveries/${id}/dismiss`, { method: 'POST' }),
+    blockDomain: (id: number) =>
+      j<{ ok: boolean; blocked_domain: string }>(
+        `${BASE}/discoveries/${id}/block-domain`,
+        { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({}) },
+      ),
+    unblock: (domain: string) =>
+      j<{ ok: boolean }>(`${BASE}/discoveries/blocklist/${encodeURIComponent(domain)}`, { method: 'DELETE' }),
+    blocklist: () =>
+      j<{ blocklist: DiscoveryBlocklistItem[] }>(`${BASE}/discoveries/blocklist`),
+    runNow: () =>
+      j<{ ok: boolean; message: string }>(`${BASE}/curator/run`, { method: 'POST' }),
   },
 
   vault: {

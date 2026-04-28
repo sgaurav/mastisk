@@ -197,6 +197,21 @@ async def start_scheduler():
         log.warning("scheduler: github_ideator registration failed: %s", e)
 
     try:
+        from mastisk.agents.curator import Curator
+        # Curator drives Discover. Hourly tick lets the cadence (weekly default,
+        # daily option) be controlled from Settings without restart. First run
+        # 2 minutes after boot so the wiki has time to settle.
+        sched.add_job(
+            Curator().run_once, "interval",
+            seconds=Curator.tick_seconds, id="curator",
+            next_run_time=datetime.now(timezone.utc) + timedelta(seconds=120),
+            max_instances=1, coalesce=True,
+        )
+        log.info("scheduler: curator registered (1h tick; cadence in Settings)")
+    except Exception as e:
+        log.warning("scheduler: curator registration failed: %s", e)
+
+    try:
         from mastisk.agents.blog_writer import BlogWriter
         # BlogWriter is purely job-driven (POST /api/blog-posts enqueues a
         # draft job). 10s tick matches Roundtable — user is blocking on this

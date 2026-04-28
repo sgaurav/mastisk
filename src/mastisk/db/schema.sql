@@ -114,6 +114,38 @@ CREATE TABLE IF NOT EXISTS rss_feeds (
   added_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS discoveries (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  url           TEXT NOT NULL,                      -- canonical URL the candidate points at
+  domain        TEXT NOT NULL,                      -- normalized hostname (no www.)
+  title         TEXT,                               -- best-effort, may be backfilled when fetched
+  kind          TEXT NOT NULL,                      -- co_citation | substack_rec | hn_domain | arxiv_paper
+  source_kind   TEXT,                               -- 'feed' | 'article' | 'paper' | 'domain' (what to do on accept)
+  confluence    INTEGER NOT NULL DEFAULT 1,         -- # of endorsements
+  trust_paths_json TEXT NOT NULL,                   -- list of {via_subscription_url, via_article_id, snippet}
+  llm_score     INTEGER,                            -- 1-10 if Claude judged it; NULL otherwise
+  status        TEXT NOT NULL DEFAULT 'open',       -- open | accepted | saved | dismissed | expired
+  surfaced_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+  resolved_at   DATETIME,
+  UNIQUE(url, status)
+);
+CREATE INDEX IF NOT EXISTS idx_discoveries_status ON discoveries(status, surfaced_at);
+CREATE INDEX IF NOT EXISTS idx_discoveries_domain ON discoveries(domain);
+
+CREATE TABLE IF NOT EXISTS discovery_blocklist (
+  domain        TEXT PRIMARY KEY,
+  added_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+  reason        TEXT
+);
+
+CREATE TABLE IF NOT EXISTS curator_runs (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  started_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+  finished_at   DATETIME,
+  surfaced      INTEGER DEFAULT 0,
+  error         TEXT
+);
+
 CREATE TABLE IF NOT EXISTS subscriptions (
   url TEXT PRIMARY KEY,                     -- canonical RSS URL we poll
   kind TEXT NOT NULL,                       -- 'rss' | 'youtube' | 'podcast'

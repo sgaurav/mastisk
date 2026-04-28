@@ -14,7 +14,7 @@ interface Props {
   onAddSubscription: () => void;
 }
 
-const SYS_VIEWS = new Set<View>(['digest', 'queue', 'feed', 'agents', 'graph', 'ingest', 'lint', 'settings', 'open_questions', 'notes', 'roundtables', 'repos', 'blog', 'subscriptions']);
+const SYS_VIEWS = new Set<View>(['digest', 'queue', 'feed', 'agents', 'graph', 'ingest', 'lint', 'settings', 'open_questions', 'notes', 'roundtables', 'repos', 'blog', 'subscriptions', 'discover']);
 
 export function Sidebar({ vault, pinned, user, currentView, currentArticle, onNavigate, onAddRepo, onCaptureNote, onCreateBlog, onAddSubscription }: Props) {
   // Folders are collapsed by default. A label appearing in `opened` with value
@@ -106,6 +106,16 @@ export function Sidebar({ vault, pinned, user, currentView, currentArticle, onNa
         >
           +
         </button>
+      </div>
+      <div className="side-row-group" style={{ display: 'flex', alignItems: 'center' }}>
+        <div
+          className={`side-row ${currentView === 'discover' ? 'active' : ''}`}
+          onClick={() => onNavigate('discover')}
+          style={{ flex: 1 }}
+        >
+          <span className="glyph">⊛</span>
+          <span className="label">Discover</span>
+        </div>
       </div>
       <div className="side-row-group" style={{ display: 'flex', alignItems: 'center' }}>
         <div

@@ -1694,6 +1694,135 @@ def recent_items_for_subscription(
     return [dict(r) for r in rows]
 
 
+# ─────────────────────────────── Discovery ───────────────────────────────
+
+def list_discoveries(
+    conn: sqlite3.Connection,
+    *,
+    status: str = "open",
+    kind: str | None = None,
+    limit: int = 50,
+) -> list[dict]:
+    sql = "SELECT * FROM discoveries WHERE status = ?"
+    params: list[Any] = [status]
+    if kind:
+        sql += " AND kind = ?"
+        params.append(kind)
+    sql += " ORDER BY confluence DESC, surfaced_at DESC LIMIT ?"
+    params.append(int(limit))
+    rows = []
+    for r in conn.execute(sql, params):
+        d = dict(r)
+        d["trust_paths"] = json.loads(d.pop("trust_paths_json") or "[]")
+        rows.append(d)
+    return rows
+
+
+def get_discovery(conn: sqlite3.Connection, discovery_id: int) -> dict | None:
+    row = conn.execute("SELECT * FROM discoveries WHERE id = ?", (discovery_id,)).fetchone()
+    if not row:
+        return None
+    d = dict(row)
+    d["trust_paths"] = json.loads(d.pop("trust_paths_json") or "[]")
+    return d
+
+
+def count_open_discoveries(conn: sqlite3.Connection) -> int:
+    row = conn.execute("SELECT COUNT(*) AS n FROM discoveries WHERE status = 'open'").fetchone()
+    return row["n"] if row else 0
+
+
+def insert_discovery(
+    conn: sqlite3.Connection,
+    *,
+    url: str,
+    domain: str,
+    title: str | None,
+    kind: str,
+    source_kind: str,
+    confluence: int,
+    trust_paths: list[dict],
+    llm_score: int | None = None,
+) -> int:
+    """Insert a fresh open discovery. Returns row id, or 0 if a row with the
+    same (url, status='open') already exists (UNIQUE constraint)."""
+    try:
+        cur = conn.execute(
+            """INSERT INTO discoveries
+                  (url, domain, title, kind, source_kind, confluence,
+                   trust_paths_json, llm_score, status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open')""",
+            (url, domain, title, kind, source_kind, int(confluence),
+             json.dumps(trust_paths), llm_score),
+        )
+        return cur.lastrowid or 0
+    except sqlite3.IntegrityError:
+        return 0
+
+
+def set_discovery_status(
+    conn: sqlite3.Connection, discovery_id: int, status: str,
+) -> dict | None:
+    """Flip status; sets resolved_at when leaving 'open'."""
+    if status == "open":
+        conn.execute(
+            "UPDATE discoveries SET status = 'open', resolved_at = NULL WHERE id = ?",
+            (discovery_id,),
+        )
+    else:
+        conn.execute(
+            "UPDATE discoveries SET status = ?, resolved_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (status, discovery_id),
+        )
+    return get_discovery(conn, discovery_id)
+
+
+def add_to_blocklist(
+    conn: sqlite3.Connection, domain: str, reason: str | None = None,
+) -> None:
+    conn.execute(
+        "INSERT OR IGNORE INTO discovery_blocklist (domain, reason) VALUES (?, ?)",
+        (domain, reason),
+    )
+
+
+def remove_from_blocklist(conn: sqlite3.Connection, domain: str) -> bool:
+    cur = conn.execute("DELETE FROM discovery_blocklist WHERE domain = ?", (domain,))
+    return (cur.rowcount or 0) > 0
+
+
+def is_blocked(conn: sqlite3.Connection, domain: str) -> bool:
+    row = conn.execute("SELECT 1 FROM discovery_blocklist WHERE domain = ?", (domain,)).fetchone()
+    return row is not None
+
+
+def list_blocklist(conn: sqlite3.Connection) -> list[dict]:
+    return [dict(r) for r in conn.execute(
+        "SELECT domain, added_at, reason FROM discovery_blocklist ORDER BY added_at DESC"
+    )]
+
+
+def record_curator_run_start(conn: sqlite3.Connection) -> int:
+    cur = conn.execute("INSERT INTO curator_runs DEFAULT VALUES")
+    return cur.lastrowid or 0
+
+
+def record_curator_run_finish(
+    conn: sqlite3.Connection, run_id: int, *, surfaced: int, error: str | None = None,
+) -> None:
+    conn.execute(
+        "UPDATE curator_runs SET finished_at = CURRENT_TIMESTAMP, surfaced = ?, error = ? WHERE id = ?",
+        (int(surfaced), error, run_id),
+    )
+
+
+def last_curator_run_at(conn: sqlite3.Connection) -> str | None:
+    row = conn.execute(
+        "SELECT MAX(started_at) AS t FROM curator_runs WHERE error IS NULL"
+    ).fetchone()
+    return row["t"] if row else None
+
+
 def reclaim_running_blog_posts(
     conn: sqlite3.Connection, *, stale_minutes: int = 60
 ) -> int:

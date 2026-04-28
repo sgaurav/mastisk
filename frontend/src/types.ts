@@ -308,7 +308,8 @@ export type View =
   | 'roundtables' | 'roundtable'
   | 'repos' | 'repo'
   | 'blog' | 'blog_post'
-  | 'subscriptions' | 'subscription';
+  | 'subscriptions' | 'subscription'
+  | 'discover';
 
 export type BlogSourceKind = 'note' | 'article' | 'roundtable';
 
@@ -424,6 +425,12 @@ export interface BudgetValues {
   synthesizer: number;
 }
 
+export interface DiscoverValues {
+  cadence_hours: number;
+  min_confluence: number;
+  llm_judge_enabled: boolean;
+}
+
 export interface SettingsValues {
   claude_cmd: string;
   ollama_local_url: string;
@@ -434,6 +441,7 @@ export interface SettingsValues {
   summarize_model_cheap: string;
   summarize_model_heavy: string;
   budget: BudgetValues;
+  discover: DiscoverValues;
 }
 
 export interface SettingsBundle {
@@ -467,6 +475,7 @@ export interface SettingsPatch {
   summarize_model_cheap?: string;
   summarize_model_heavy?: string;
   budget?: BudgetValues;
+  discover?: Partial<DiscoverValues>;
 }
 
 export interface SynthesisRun {
@@ -538,4 +547,35 @@ export interface SubscriptionRecentItem {
 export interface SubscriptionDetail {
   subscription: Subscription;
   recent_items: SubscriptionRecentItem[];
+}
+
+export type DiscoveryKind = 'co_citation' | 'substack_rec' | 'hn_domain' | 'arxiv_paper';
+export type DiscoverySourceKind = 'feed' | 'article' | 'paper' | 'domain';
+export type DiscoveryStatus = 'open' | 'accepted' | 'saved' | 'dismissed' | 'expired';
+
+export interface DiscoveryTrustPath {
+  via_subscription_url: string | null;
+  via_article_id: string | null;
+  snippet: string;
+}
+
+export interface Discovery {
+  id: number;
+  url: string;
+  domain: string;
+  title: string | null;
+  kind: DiscoveryKind;
+  source_kind: DiscoverySourceKind;
+  confluence: number;
+  trust_paths: DiscoveryTrustPath[];
+  llm_score: number | null;
+  status: DiscoveryStatus;
+  surfaced_at: string;
+  resolved_at: string | null;
+}
+
+export interface DiscoveryBlocklistItem {
+  domain: string;
+  added_at: string;
+  reason: string | null;
 }
