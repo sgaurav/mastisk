@@ -18,6 +18,8 @@ Mastisk is the assistant that **reads, watches, listens, and thinks for you in t
 - [Configuration](#configuration)
 - [Running it](#running-it)
 - [Phone setup](#phone-setup)
+- [Subscriptions](#subscriptions)
+- [Discover](#discover)
 - [Connecting your GitHub](#connecting-your-github)
 - [Capturing notes](#capturing-notes)
 - [Multi-LLM roundtable](#multi-llm-roundtable)
@@ -32,16 +34,18 @@ Mastisk is the assistant that **reads, watches, listens, and thinks for you in t
 
 | capability | what it does |
 |---|---|
-| **RSS reading agent** | Polls feeds you subscribe to. Filters by your interests + dislikes. Compiles relevant items into wiki articles. |
-| **YouTube + podcast listener** | Pulls audio, transcribes locally with `mlx-whisper`, compiles a summary article. |
+| **Subscriptions** | One unified subscribe flow for RSS, YouTube channels/playlists, and podcasts. Paste any URL — the resolver auto-detects kind (Apple Podcasts → underlying RSS, YouTube `@handle` → channel feed) and runs recurring polling with diff tracking, force-poll, pause/resume, and per-source interest-filter override. |
+| **Discover** | Weekly Curator agent surfaces high-quality sources *outside* your subscriptions via four signals: co-citation across your wiki, Substack recommendations from your existing subs, HN front-page domain leaderboard, and arXiv citation graph. Each card shows its trust path ("cited by Lilian Weng + 2 others") so you know *why* it surfaced. |
+| **One-shot link saving** | Drop any URL — blog post, YouTube video, podcast episode, direct audio — into the "Paste a link" form. Backend auto-classifies: blogs go to Compiler (extract + article), audio/video go to Listener (transcribe + article). |
 | **Notes** | Capture from PWA, CLI, or any editor. Auto-classified (`idea`, `question`, `task`, `quote`…). |
 | **Auto-escalation** | High-value notes (ideas, questions) get researched by Claude into wiki-article stubs without you asking. |
-| **GitHub repo tracking** | Hourly poll of commits, issues, PRs, README. Daily idea generation per repo. |
+| **GitHub repo tracking** | Hourly poll of commits, issues, PRs, README. Daily idea generation per repo. Local repos supported too. |
 | **Multi-LLM roundtable** | Fan a prompt out to Claude / Codex / Gemini / Ollama in parallel. Get a synthesis paragraph that calls out where they agree and disagree. |
 | **Knowledge graph** | Force-directed graph of your concepts and entities, with backlinks and a digest ranker. |
 | **Synthesis pages** | Cross-article essays drafted by a Draft → Critic loop, refreshed as new sources land. |
 | **Blog drafts** | "Personal blog post" first-person drafts assembled from your recent synthesis. |
 | **Visual artifacts** | Diagrams + charts auto-generated for articles by a heavy local model. |
+| **Vault editor in Settings** | Edit your `_self/*.md` identity files (`identity`, `interests`, `dislikes`, `style`, `learnings`) directly in the PWA. Atomic write to iCloud. |
 | **Markdown vault** | Everything is also plain markdown in iCloud Drive. Open it in Obsidian, vim, the Files app, anything. |
 | **PWA on your phone** | Installable, offline-friendly, full-screen. Read on the bus. |
 
@@ -51,13 +55,13 @@ Everything is **local-first**: your wiki lives in your iCloud Drive, your DB liv
 
 ## How it works (architecture)
 
-Mastisk is a single Python process running on your Mac. It exposes a FastAPI app on `localhost:8080` (and your Tailnet hostname) and runs a scheduler that ticks each agent on its own cadence. Inputs come in from the outside world; agents process them through Claude (via the `claude` CLI) and Ollama (local + cloud-proxied); outputs land in a SQLite DB **and** a markdown vault in iCloud.
+Mastisk is a single Python process running on your Mac. It exposes a FastAPI app on `localhost:8080` (and your Tailnet hostname) and runs a scheduler that ticks each agent on its own cadence. Subscriptions (RSS / YouTube / Podcast), one-shot URL ingest, GitHub repos, your notes, and a weekly Discover loop all flow into a small fleet of agents that process inputs through Claude (via the `claude` CLI) and Ollama (local + cloud-proxied); outputs land in a SQLite DB **and** a markdown vault in iCloud.
 
 ```mermaid
 flowchart LR
   subgraph IN["Inputs"]
-    RSS["RSS feeds"]
-    YT["YouTube / podcasts"]
+    SUB["Subscriptions<br/>(RSS · YT · Podcast)"]
+    PL["Paste a link<br/>(one-shot URL)"]
     GH["GitHub repos"]
     UN["Your notes<br/>(PWA / CLI / vault)"]
   end
@@ -71,8 +75,8 @@ flowchart LR
 
   subgraph AG["Agents (scheduled)"]
     direction TB
-    SC["Scout<br/>(RSS, 10min)"]
-    LI["Listener<br/>(YT/podcast)"]
+    SC["Scout<br/>(per-kind dispatch, 10min)"]
+    LI["Listener<br/>(transcribe video / audio)"]
     NT["Notetaker<br/>(30s)"]
     GP["GitHub Poller<br/>(60min)"]
     GI["GitHub Ideator<br/>(daily)"]
@@ -81,6 +85,7 @@ flowchart LR
     SY["Synthesizer"]
     BL["Blog Writer"]
     AR["Artifact Agent"]
+    CT["Curator<br/>(Discover, weekly)"]
     LN["Linter"]
     VI["Vault Integrity"]
   end
@@ -93,16 +98,19 @@ flowchart LR
 
   subgraph OUT["Surfaces"]
     PWA["PWA wiki<br/>(Mac + iPhone)"]
+    DSC["Discover<br/>(PWA candidates)"]
     CLI["mastisk CLI"]
     FILES["Files app /<br/>Obsidian"]
   end
 
-  RSS --> SC
-  YT  --> LI
+  SUB --> SC
+  PL  --> CO
+  PL  --> LI
   GH  --> GP
   UN  --> NT
 
   SC --> CO
+  SC --> LI
   LI --> CO
   GP --> GI
   NT --> ES
@@ -114,6 +122,7 @@ flowchart LR
   CO --> AR
   SY --> LN
   NT --> VI
+  DB --> CT
 
   CO --> BR
   ES --> BR
@@ -122,6 +131,7 @@ flowchart LR
   GI --> BR
   NT --> BR
   AR --> BR
+  CT --> BR
 
   CO --> DB
   CO --> VA
@@ -134,9 +144,11 @@ flowchart LR
   GP --> RA
   LI --> RA
   AR --> VA
+  CT --> DB
 
   DB --> PWA
   VA --> PWA
+  DB --> DSC
   DB --> CLI
   VA --> FILES
 ```
@@ -154,8 +166,8 @@ flowchart LR
 
 | agent | trigger | what it does |
 |---|---|---|
-| **Scout** | every 10 min | Polls RSS feeds. Embeds each item against your `interests.md`. Drops irrelevant or `dislikes.md`-matching items. Enqueues a Compiler job for the rest. |
-| **Listener** | on demand (`add-youtube` / `add-podcast`) | Downloads audio with `yt-dlp`, transcribes with `mlx-whisper`, hands the transcript to Compiler. |
+| **Scout** | every 10 min | Polls all enabled subscriptions (RSS, YouTube, podcast). Per-kind dispatch: RSS → Compiler (with interest-filter gating); YouTube → Listener `transcribe`; Podcast → Listener `transcribe_audio`. Diff-tracked via per-subscription `last_seen_guid`; first poll backfills N most-recent items. |
+| **Listener** | per-job (Subscriptions feed Listener for YT/podcast; ad-hoc via Paste-a-link or `add-youtube`/`add-podcast`) | Downloads audio with `yt-dlp` (curl_cffi browser-impersonation TLS to dodge bot detection; 8s throttle between calls); transcribes with `mlx-whisper` if installed (falls back to subtitle scrape when available). Hands transcript to Compiler. |
 | **Compiler** | per-job | Turns one source into a structured wiki article (title, summary, sections, related links, confidence) via Claude. Writes to DB + vault. |
 | **Synthesizer** | periodic | Drafts cross-article Synthesis pages with a Draft → Critic loop. Refreshes when new related articles land. |
 | **Notetaker** | every 30s | Watches `vault/_notes/inbox/`. When a new file is stable for 30s, classifies it locally (Ollama) into idea / question / task / quote / etc. |
@@ -164,6 +176,7 @@ flowchart LR
 | **GitHub Ideator** | daily per repo | Reads the latest `context_md` and generates ~4 idea-notes per repo per day. Each idea flows back through the Notetaker → Escalator pipeline. |
 | **Blog Writer** | on demand | Drafts a personal blog post in your style from recent synthesis pages. |
 | **Artifact Agent** | per article | Generates 1–3 visual artifacts (diagrams, charts) per article via a heavy local model. |
+| **Curator** | weekly (configurable: weekly / daily) | Surfaces sources outside your subscriptions. Runs four signals in parallel — co-citation across your wiki, Substack `/recommendations` from each Substack subscription, HN front-page domain leaderboard (last 30 days), arXiv citation graph (Semantic Scholar). Merges by URL, applies confluence threshold + dislikes/blocklist filters, optional Claude relevance pass. Surfaces top-15 in the Discover view. |
 | **Linter** | hourly | Health checks: dead links, stale stubs, articles with too-low confidence, etc. |
 | **Vault Integrity** | hourly | Tombstones notes whose vault file was deleted from outside Mastisk (e.g. you cleaned up in Obsidian). |
 | **Roundtable** | on demand | Fans a prompt to Claude / Codex / Gemini / Ollama in parallel and synthesizes. |
@@ -266,9 +279,10 @@ Uninstall (preserves your iCloud vault):
 | **claude** | [claude.com/claude-code](https://claude.com/claude-code) + `claude login` | yes | agents use your Claude subscription |
 | **ollama** | `brew install ollama` | optional but recommended | local + cloud-proxied models, embeddings |
 | **tailscale** | `brew install --cask tailscale` or App Store | optional | phone access from anywhere |
+| **mlx-whisper** | `uv tool install --force --reinstall --with mlx-whisper .` | optional | only needed for transcribing YouTube videos / podcast episodes that lack subtitles |
 | **codex / gemini** CLIs | per-tool docs | optional | only needed if you want them in roundtables |
 
-`install.sh` verifies these and tells you which are missing.
+`install.sh` verifies these and tells you which are missing. (`curl_cffi` is pulled in automatically — it gives `yt-dlp` browser-fingerprint TLS so YouTube doesn't rate-limit your IP.)
 
 ---
 
@@ -282,7 +296,8 @@ Uninstall (preserves your iCloud vault):
 | **Ollama Cloud API key** | `config.toml` → `ollama_cloud_key` | string | optional; skip to use local Ollama only |
 | **GitHub PAT** | `config.toml` → `[github] pat` (or PWA → Settings → GitHub) | classic PAT, `public_repo` scope | optional but recommended |
 | **Tailscale auth** | Tailscale app (menu-bar icon) | — | optional; only if you want phone access |
-| **RSS feeds** | SQLite `rss_feeds` table | URL list | needed for Scout to do anything |
+| **Subscriptions** | SQLite `subscriptions` table (managed via PWA → Subscriptions or `mastisk subscribe`) | URL list (kind auto-detected) | needed for Scout to do anything |
+| **Discover blocklist** | SQLite `discovery_blocklist` table (managed via PWA → Settings → Discovery) | domain list | optional; per-domain "never surface" list |
 | **iCloud sync** | macOS Settings → Apple ID → iCloud → iCloud Drive → on | — | required for phone-side vault access |
 
 `config.toml` lives at `~/Library/Application Support/Mastisk/config.toml`. It's the only place secrets are stored on disk, and it's locked to mode `0600`.
@@ -322,9 +337,20 @@ A classic PAT with `public_repo` scope gets you 5,000 GitHub API requests/hour. 
 
 - daily budget caps per agent (`[budget]`) — hard limits on how many jobs each agent runs per day
 - model selection (`embed_model`, `summarize_model_heavy`, `summarize_model_cheap`)
-- subsystem-specific config blocks: `[notes]`, `[roundtable]`, `[github]`, `[blog]`
+- subsystem-specific config blocks: `[notes]`, `[roundtable]`, `[github]`, `[blog]`, `[discover]`
 
 Safe to edit. Mastisk reloads config on the next agent tick — no restart needed.
+
+### Discovery settings
+
+The Curator agent (Discover) uses these defaults; override in `config.toml` under `[discover]` or in **PWA → Settings → Discovery**:
+
+```toml
+[discover]
+cadence_hours = 168       # 168 = weekly (default), 24 = daily
+min_confluence = 2        # min distinct trusted-source endorsements before surfacing (1 = off, 2, 3)
+llm_judge_enabled = true  # Claude relevance pass on the survivor set (1 call/cycle)
+```
 
 ### What you do *not* need a key for
 
@@ -378,6 +404,123 @@ tail -f ~/Library/Application\ Support/Mastisk/logs/mastisk.log
 You now have a Mastisk icon that launches full-screen. It's a PWA — works offline for cached articles, syncs when you're back online.
 
 You also get a **second reading path** via iCloud: **Files app → iCloud Drive → Mastisk → vault → `*.md`**. Plain markdown, opens in Obsidian too. The PWA is the rich UX; the iCloud vault is the fallback when your Mac is off.
+
+---
+
+## Subscriptions
+
+Subscriptions is the single home for everything the agents poll on a schedule — RSS feeds, YouTube channels and playlists, podcast shows. **Paste any URL once**, and Mastisk handles the rest: detecting the kind, polling on cadence, diff-tracking new items, and dispatching them to the right agent.
+
+```bash
+# Subscribe via CLI (any URL works — auto-detects the kind):
+mastisk subscribe https://www.youtube.com/@mkbhd
+mastisk subscribe https://podcasts.apple.com/us/podcast/.../id1674008350
+mastisk subscribe https://simonwillison.net/atom/everything/
+
+# List + manage:
+mastisk subscriptions
+mastisk poll-now <url>          # force-poll right now
+mastisk unsubscribe <url>
+```
+
+Or in the PWA: sidebar → **◈ Subscriptions** → `+ Add subscription` → paste URL. The modal probes the URL live and shows the detected kind + title before you commit:
+
+> ✓ YouTube · Marques Brownlee · 1,247 items
+
+### What gets auto-detected
+
+| input | resolved to | dispatched to |
+|---|---|---|
+| YouTube channel URL or `@handle` | `feeds/videos.xml?channel_id=UC...` | Listener (transcribe each new video) |
+| YouTube playlist URL | `feeds/videos.xml?playlist_id=PL...` | Listener |
+| Apple Podcasts URL (`podcasts.apple.com/.../idNNN`) | iTunes Lookup → underlying RSS | Listener (transcribe_audio) |
+| Podcast RSS feed | (kept as-is) | Listener |
+| Plain RSS / Atom feed | (kept as-is) | Compiler (interest-filter applies) |
+| Spotify URL | (rejected — DRM) | n/a |
+| `news.ycombinator.com` | use `https://hnrss.org/frontpage?points=100` directly — see below | Compiler |
+
+### Hacker News
+
+HN itself doesn't have an official front-page RSS. The third-party `hnrss.org` does, with a points filter that gives you a clean "reached front page" signal:
+
+```bash
+mastisk subscribe 'https://hnrss.org/frontpage?points=100'
+```
+
+≥100 points reliably means a story climbed to and stayed on the HN front page. Your `interests.md` filter then narrows the ~50 daily candidates to your topics.
+
+### Per-subscription controls
+
+When you subscribe, you can configure:
+
+- **Backfill** — number of recent items to process on the first poll (default 3)
+- **Bypass interest filter** — default ON for YouTube / Podcast (you subscribed → you want it), OFF for RSS (interests gate still applies)
+
+After subscribing, the detail page (click any row in Subscriptions) lets you:
+
+- **Poll now** — force a fetch immediately
+- **Pause / Resume** — stop polling without removing
+- **Edit title** — inline (✎)
+- **Remove** — stop polling and drop the subscription
+- **Recent items** — see the last 20 jobs the subscription kicked off, with status badges
+
+### One-shot links (Paste a link)
+
+Below the subscriptions list, there's a "Paste a link" form for **one-off** ingestion. Drop any URL — blog post, YouTube video, podcast episode, direct audio — and the system auto-classifies and processes it once (no recurring polling). Same form, three classes of input:
+
+```bash
+# Blog post → Compiler
+# YouTube video → Listener (transcribe)
+# Podcast episode / direct audio → Listener (transcribe_audio)
+```
+
+Already-saved URLs return a friendly "already saved · &lt;title&gt;" without re-processing.
+
+---
+
+## Discover
+
+Subscriptions deepen your wiki within the sources you've chosen. **Discover widens it** — surfacing high-quality sources outside your subscriptions that you should know about, but using only your existing trust network as the validation signal. Every recommendation comes with a verifiable trust path back to people you already endorse.
+
+The system never says "this is good." It says **"Karpathy and Lilian Weng both link here, you've never read it."**
+
+### Four signals (all run in parallel each cycle)
+
+| signal | what it computes |
+|---|---|
+| **Co-citation** | External URLs/domains cited by ≥N of your wiki articles. Pure DB query. The strongest signal — your trusted writers already vouched for these. |
+| **Substack recommendations** | For each Substack subscription, scrapes its `/recommendations` page. Publications recommended by ≥2 of your subs surface as candidates. The writers themselves are vouching. |
+| **HN domain leaderboard** | Domains that repeatedly hit the HN front page (last 30 days), filtered to ones you don't already follow. Community curation as the filter. |
+| **arXiv citation graph** | For each arXiv paper in your wiki sources, walks references via Semantic Scholar. Papers cited by ≥N of your wiki articles surface as candidates. |
+
+A final **Claude relevance pass** (ON by default) scores the top ~15 finalists 1–10; survivors with score ≥7 are kept. One Claude call per cycle. Toggle off in Settings if you don't want it.
+
+### Cadence + threshold
+
+Curator runs **weekly** by default. Override in PWA → Settings → Discovery (or `mastisk discover-now` to force a cycle):
+
+| setting | default | options |
+|---|---|---|
+| Cadence | Weekly | Daily / Weekly |
+| Confluence threshold | 2 | Off (≥1) · 2 · 3 |
+| LLM judge | On | toggle |
+
+### What you do with a discovery
+
+Each card in the Discover view lists up to 3 trust-path snippets ("cited by …", "recommended by …", "hit HN N× last 30d", "referenced from …") and four ghost-button actions:
+
+- **Subscribe** — adds it as a real recurring Subscription (via the Subscriptions resolver, so the kind gets re-detected)
+- **Save** — one-off ingest (same as Paste-a-link)
+- **Dismiss** — drops the card without affecting future surfacing of the same source
+- **Block domain** — never surface this domain again. One-click with an undo toast for 5s.
+
+Blocked domains are managed in **Settings → Discovery → Blocked domains**.
+
+### When will I see results?
+
+Discover needs material to find patterns in. With a fresh wiki and ~5 subscriptions, expect the first useful surfacing 1–2 weeks in. With 20+ subscriptions and a few months of ingestion, the weekly cycle typically produces 5–15 high-confidence candidates per run.
+
+If your wiki is small and you want results sooner, drop the confluence threshold to `Off (≥1)` temporarily, run `mastisk discover-now`, evaluate the surfacing, then move it back to `2`.
 
 ---
 
@@ -464,27 +607,34 @@ vault/_self/
 └─ learnings.md     auto-appended by the Reflection agent (M2)
 ```
 
-Open the folder on Mac:
+Three ways to edit them:
 
-```bash
-open ~/Library/Mobile\ Documents/com~apple~CloudDocs/Mastisk/vault/_self
-```
+- **PWA → Settings → Vault files** — edit any of the five files inline, save back to iCloud atomically. Easiest path.
+- **Open the folder on Mac:** `open ~/Library/Mobile\ Documents/com~apple~CloudDocs/Mastisk/vault/_self`
+- **Edit on your phone** via the Files app → iCloud Drive → Mastisk → vault → _self
 
 Changes apply on the next agent run — no restart needed.
 
 ### Bootstrap content
 
-From a clean state, three ways to give the agents something to do:
+From a clean state, several ways to give the agents something to do:
 
 ```bash
-# Subscribe a real RSS feed — Scout polls every 10 min
-mastisk add-feed https://simonwillison.net/atom/everything/
+# Subscribe to a recurring source — RSS / YouTube / podcast (auto-detected)
+mastisk subscribe https://simonwillison.net/atom/everything/
+mastisk subscribe https://www.youtube.com/@mkbhd
+mastisk subscribe 'https://hnrss.org/frontpage?points=100'
 
-# Queue a YouTube video for transcription
+# One-off ingest a single URL (blog / video / podcast episode)
+#   — paste it in the PWA's "Paste a link" form, or:
 mastisk add-youtube https://www.youtube.com/watch?v=...
+mastisk add-podcast https://example.com/podcast-episode.mp3
 
-# Track a GitHub repo
+# Track a GitHub repo (recurring)
 mastisk add-repo anthropics/claude-code
+
+# Force a Discover cycle (instead of waiting a week)
+mastisk discover-now
 
 # Or load the sample wiki
 mastisk seed-demo
@@ -515,14 +665,31 @@ mastisk reset --wipe-vault  wipe markdown vault too
 mastisk start               run the app (foreground)
 mastisk dev                 dev mode with reload (repo-checkout only)
 mastisk url                 print Desktop + LAN + Tailnet URLs
-mastisk add-feed <url>      subscribe an RSS feed
+
+# Subscriptions (RSS / YouTube / Podcast — kind auto-detected)
+mastisk subscribe <url>     subscribe to RSS / YouTube / podcast
+mastisk subscriptions       list all subscriptions
+mastisk unsubscribe <url>   remove a subscription
+mastisk poll-now <url>      force-poll a single subscription
+mastisk add-feed <url>      alias of `subscribe` (back-compat)
+
+# One-off / ad-hoc ingest
 mastisk add-youtube <url>   queue a video for Listener
 mastisk add-podcast <url>   queue a podcast (RSS / Apple / direct audio)
+
+# Discover (Curator)
+mastisk discover-now        run a Curator (Discover) cycle immediately
+
+# Notes + Roundtable
 mastisk note [text]         capture a note (opens $EDITOR if no text)
 mastisk roundtable [text]   fan a prompt out to all LLM backends + synthesize
+
+# GitHub repos
 mastisk add-repo <slug>     track a GitHub repo (hourly poll + daily ideation)
 mastisk list-repos          list tracked repos
 mastisk remove-repo <slug>  tombstone a tracked repo
+
+# Ops
 mastisk logs                tail agent activity
 mastisk vault-path          show where the vault lives
 mastisk backup              tar the DB + config to ./mastisk-backup-*.tar.gz
