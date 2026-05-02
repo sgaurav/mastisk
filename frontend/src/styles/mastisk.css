@@ -2089,3 +2089,57 @@ a { color: inherit; }
   .bp-toolbar { margin-top: 0; align-self: flex-start; }
   .bp-menu { right: auto; left: 0; min-width: 240px; }
 }
+
+/* ---------- list-row pattern (Discover, Subscriptions, Repos) ---------- */
+/* Desktop: content column + N right-aligned action buttons in a grid.   */
+/* Mobile: stack content above an actions row that wraps responsively.   */
+
+.list-row {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border-top: 1px solid var(--line-soft);
+  align-items: center;
+}
+.list-row-3 { grid-template-columns: minmax(0, 1fr) auto auto auto; }
+.list-row-4 { grid-template-columns: minmax(0, 1fr) auto auto auto auto; }
+
+.list-row-content { min-width: 0; overflow: hidden; }
+.list-row-content a { word-break: break-all; }
+
+@media (max-width: 700px) {
+  .list-row-3, .list-row-4 {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+  /* Wrap all the auto-sized button columns into a single flex row that
+     fills the line and wraps at narrow widths. The :not selector keeps
+     the content cell as-is (full width); everything else (the buttons)
+     becomes a flex item with min-width 0. */
+  .list-row-3 > button,
+  .list-row-4 > button {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+}
+
+/* Pull the action buttons into a single bottom row on mobile via grid
+   line spans — supported on all modern browsers Mastisk targets. */
+@media (max-width: 700px) {
+  .list-row-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+  }
+  .list-row-actions > button {
+    flex: 1 1 calc(50% - 3px);
+    min-width: 0;
+    width: auto;
+  }
+}
+/* Desktop: actions container is a passthrough so each button still
+   participates in the grid columns directly. */
+@media (min-width: 701px) {
+  .list-row-actions { display: contents; }
+}

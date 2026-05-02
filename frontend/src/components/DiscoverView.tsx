@@ -219,15 +219,8 @@ function DiscoveryRow({ d, busy, onAccept, onSave, onDismiss, onBlockDomain }: {
   const truncatedPaths = d.trust_paths.slice(0, 3);
   const extraPaths = d.trust_paths.length - truncatedPaths.length;
   return (
-    <div style={{
-      display:'grid',
-      gridTemplateColumns:'1fr auto auto auto auto',
-      gap:10,
-      padding:'14px 16px',
-      borderTop:'1px solid var(--line-soft)',
-      alignItems:'center',
-    }}>
-      <div style={{overflow:'hidden'}}>
+    <div className="list-row list-row-4">
+      <div className="list-row-content">
         <div style={{fontSize:14,color:'var(--fg)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
           <span style={{marginRight:8,color:'var(--fg-faint)'}}>{kindIcon(d.kind)}</span>
           {d.title || d.url}
@@ -246,21 +239,23 @@ function DiscoveryRow({ d, busy, onAccept, onSave, onDismiss, onBlockDomain }: {
           {extraPaths > 0 && <div>· +{extraPaths} more</div>}
         </div>
       </div>
-      <button onClick={onAccept} disabled={busy} style={btnGhost()}
-              title="Subscribe to this source via the Subscriptions resolver">
-        Subscribe
-      </button>
-      <button onClick={onSave} disabled={busy} style={btnGhost()}
-              title="Ingest this URL once">
-        Save
-      </button>
-      <button onClick={onDismiss} disabled={busy} style={btnGhost()}>
-        Dismiss
-      </button>
-      <button onClick={onBlockDomain} disabled={busy} style={btnGhost('danger')}
-              title={`Never surface ${d.domain} again`}>
-        Block domain
-      </button>
+      <div className="list-row-actions">
+        <button onClick={onAccept} disabled={busy} style={btnGhost()}
+                title="Subscribe to this source via the Subscriptions resolver">
+          Subscribe
+        </button>
+        <button onClick={onSave} disabled={busy} style={btnGhost()}
+                title="Ingest this URL once">
+          Save
+        </button>
+        <button onClick={onDismiss} disabled={busy} style={btnGhost()}>
+          Dismiss
+        </button>
+        <button onClick={onBlockDomain} disabled={busy} style={btnGhost('danger')}
+                title={`Never surface ${d.domain} again`}>
+          Block domain
+        </button>
+      </div>
     </div>
   );
 }
